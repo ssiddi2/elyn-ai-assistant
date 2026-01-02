@@ -1,0 +1,571 @@
+import { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useFacility } from '@/contexts/FacilityContext';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
+import {
+  FileText,
+  Upload,
+  Sparkles,
+  User,
+  CreditCard,
+  Stethoscope,
+  AlertCircle,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Save,
+  Loader2,
+  ClipboardPaste,
+  X,
+} from 'lucide-react';
+
+interface ParsedData {
+  patient: {
+    name: string | null;
+    dob: string | null;
+    mrn: string | null;
+    gender: string | null;
+    phone: string | null;
+    address: string | null;
+    emergencyContact: string | null;
+  };
+  insurance: {
+    provider: string | null;
+    policyNumber: string | null;
+    groupNumber: string | null;
+    subscriberName: string | null;
+    subscriberDob: string | null;
+    relationship: string | null;
+    authorizationNumber: string | null;
+  };
+  medical: {
+    allergies: string[];
+    medications: string[];
+    pastMedicalHistory: string[];
+    chiefComplaint: string | null;
+    primaryDiagnosis: string | null;
+    roomNumber: string | null;
+    attendingPhysician: string | null;
+    admissionDate: string | null;
+  };
+  confidence: {
+    overall: number;
+    patient: number;
+    insurance: number;
+    medical: number;
+  };
+}
+
+interface FaceSheetParserProps {
+  onPatientCreated?: (patientId: string) => void;
+  onToast: (message: string) => void;
+}
+
+function ConfidenceBadge({ score }: { score: number }) {
+  const percentage = Math.round(score * 100);
+  const color = score >= 0.8 ? 'text-green-600 bg-green-500/10' :
+                score >= 0.6 ? 'text-amber-600 bg-amber-500/10' :
+                'text-red-600 bg-red-500/10';
+
+  return (
+    <span className={cn("px-2 py-0.5 rounded-full text-xs font-medium", color)}>
+      {percentage}% confident
+    </span>
+  );
+}
+
+function EditableField({
+  label,
+  value,
+  onChange,
+  type = 'text',
+}: {
+  label: string;
+  value: string | null;
+  onChange: (value: string) => void;
+  type?: 'text' | 'date';
+}) {
+  return (
+    <div className="space-y-1">
+      <label className="text-xs text-muted-foreground">{label}</label>
+      <input
+        type={type}
+        value={value || ''}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+        placeholder={`Enter ${label.toLowerCase()}`}
+      />
+    </div>
+  );
+}
+
+function ArrayField({
+  label,
+  values,
+  onChange,
+}: {
+  label: string;
+  values: string[];
+  onChange: (values: string[]) => void;
+}) {
+  const [newItem, setNewItem] = useState('');
+
+  const addItem = () => {
+    if (newItem.trim()) {
+      onChange([...values, newItem.trim()]);
+      setNewItem('');
+    }
+  };
+
+  const removeItem = (index: number) => {
+    onChange(values.filter((_, i) => i !== index));
+  };
+
+  return (
+    <div className="space-y-2">
+      <label className="text-xs text-muted-foreground">{label}</label>
+      <div className="flex flex-wrap gap-2">
+        {values.map((item, index) => (
+          <span
+            key={index}
+            className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs"
+          >
+            {item}
+            <button
+              onClick={() => removeItem(index)}
+              className="hover:bg-primary/20 rounded-full p-0.5"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </span>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="text"
+          value={newItem}
+          onChange={(e) => setNewItem(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && addItem()}
+          className="flex-1 px-3 py-2 bg-surface border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20"
+          placeholder={`Add ${label.toLowerCase()}`}
+        />
+        <Button onClick={addItem} size="sm" variant="outline" disabled={!newItem.trim()}>
+          Add
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheetParserProps) {
+  const { user } = useAuth();
+  const { facilities, selectedFacilityId } = useFacility();
+  const [inputText, setInputText] = useState('');
+  const [isParsing, setIsParsing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [parsedData, setParsedData] = useState<ParsedData | null>(null);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    patient: true,
+    insurance: true,
+    medical: true,
+  });
+
+  const defaultFacilityId = selectedFacilityId !== 'all'
+    ? selectedFacilityId
+    : (facilities.find(f => f.is_default)?.id || facilities[0]?.id || '');
+
+  const toggleSection = (section: string) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const handlePaste = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setInputText(text);
+      onToast('Pasted from clipboard');
+    } catch (e) {
+      onToast('Failed to paste from clipboard');
+    }
+  };
+
+  const handleParse = async () => {
+    if (!inputText.trim()) {
+      onToast('Please enter or paste face sheet content');
+      return;
+    }
+
+    setIsParsing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-face-sheet', {
+        body: { text: inputText },
+      });
+
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Failed to parse face sheet');
+
+      setParsedData(data.data);
+      onToast('Face sheet parsed successfully');
+    } catch (e) {
+      console.error('Parse error:', e);
+      onToast(e instanceof Error ? e.message : 'Failed to parse face sheet');
+    }
+    setIsParsing(false);
+  };
+
+  const handleSavePatient = async () => {
+    if (!parsedData || !user) return;
+
+    setIsSaving(true);
+    try {
+      // Create or update patient
+      const { data: patient, error } = await supabase
+        .from('patients')
+        .insert({
+          user_id: user.id,
+          facility_id: defaultFacilityId,
+          name: parsedData.patient.name || 'Unknown Patient',
+          mrn: parsedData.patient.mrn,
+          dob: parsedData.patient.dob,
+          room: parsedData.medical.roomNumber,
+          diagnosis: parsedData.medical.primaryDiagnosis,
+          allergies: parsedData.medical.allergies,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      onToast('Patient saved successfully');
+      onPatientCreated?.(patient.id);
+
+      // Clear the form
+      setInputText('');
+      setParsedData(null);
+    } catch (e) {
+      console.error('Save error:', e);
+      onToast('Failed to save patient');
+    }
+    setIsSaving(false);
+  };
+
+  const updateParsedData = (
+    section: 'patient' | 'insurance' | 'medical',
+    field: string,
+    value: string | string[]
+  ) => {
+    if (!parsedData) return;
+    setParsedData({
+      ...parsedData,
+      [section]: {
+        ...parsedData[section],
+        [field]: value,
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Input Section */}
+      <div className="glass-card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="font-semibold text-foreground flex items-center gap-2">
+            <FileText className="w-5 h-5 text-primary" />
+            Face Sheet Input
+          </h3>
+          <Button
+            onClick={handlePaste}
+            variant="outline"
+            size="sm"
+            className="rounded-lg"
+          >
+            <ClipboardPaste className="w-4 h-4 mr-1.5" />
+            Paste
+          </Button>
+        </div>
+
+        <textarea
+          value={inputText}
+          onChange={(e) => setInputText(e.target.value)}
+          placeholder="Paste or type the face sheet content here...&#10;&#10;Include patient demographics, insurance information, medical history, allergies, medications, and any other relevant information from the face sheet."
+          className="w-full h-48 px-4 py-3 bg-surface border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+        />
+
+        <div className="flex items-center justify-between mt-3">
+          <p className="text-xs text-muted-foreground">
+            {inputText.length} characters
+          </p>
+          <Button
+            onClick={handleParse}
+            disabled={isParsing || !inputText.trim()}
+            className="rounded-xl bg-primary hover:bg-primary/90"
+          >
+            {isParsing ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Parsing...
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-4 h-4 mr-2" />
+                Parse with AI
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      {/* Parsed Results */}
+      <AnimatePresence>
+        {parsedData && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="space-y-4"
+          >
+            {/* Overall Confidence */}
+            <div className="glass-card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center">
+                    <Check className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-foreground">Parsing Complete</h3>
+                    <p className="text-sm text-muted-foreground">Review and edit extracted data</p>
+                  </div>
+                </div>
+                <ConfidenceBadge score={parsedData.confidence.overall} />
+              </div>
+            </div>
+
+            {/* Patient Information */}
+            <div className="glass-card overflow-hidden">
+              <button
+                onClick={() => toggleSection('patient')}
+                className="w-full p-4 flex items-center justify-between bg-blue-500/5"
+              >
+                <div className="flex items-center gap-2">
+                  <User className="w-5 h-5 text-blue-500" />
+                  <span className="font-semibold text-foreground">Patient Information</span>
+                  <ConfidenceBadge score={parsedData.confidence.patient} />
+                </div>
+                {expandedSections.patient ? (
+                  <ChevronUp className="w-5 h-5 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                )}
+              </button>
+              {expandedSections.patient && (
+                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <EditableField
+                    label="Full Name"
+                    value={parsedData.patient.name}
+                    onChange={(v) => updateParsedData('patient', 'name', v)}
+                  />
+                  <EditableField
+                    label="Date of Birth"
+                    value={parsedData.patient.dob}
+                    onChange={(v) => updateParsedData('patient', 'dob', v)}
+                    type="date"
+                  />
+                  <EditableField
+                    label="MRN"
+                    value={parsedData.patient.mrn}
+                    onChange={(v) => updateParsedData('patient', 'mrn', v)}
+                  />
+                  <EditableField
+                    label="Gender"
+                    value={parsedData.patient.gender}
+                    onChange={(v) => updateParsedData('patient', 'gender', v)}
+                  />
+                  <EditableField
+                    label="Phone"
+                    value={parsedData.patient.phone}
+                    onChange={(v) => updateParsedData('patient', 'phone', v)}
+                  />
+                  <EditableField
+                    label="Emergency Contact"
+                    value={parsedData.patient.emergencyContact}
+                    onChange={(v) => updateParsedData('patient', 'emergencyContact', v)}
+                  />
+                  <div className="md:col-span-2">
+                    <EditableField
+                      label="Address"
+                      value={parsedData.patient.address}
+                      onChange={(v) => updateParsedData('patient', 'address', v)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Insurance Information */}
+            <div className="glass-card overflow-hidden">
+              <button
+                onClick={() => toggleSection('insurance')}
+                className="w-full p-4 flex items-center justify-between bg-green-500/5"
+              >
+                <div className="flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-green-500" />
+                  <span className="font-semibold text-foreground">Insurance Information</span>
+                  <ConfidenceBadge score={parsedData.confidence.insurance} />
+                </div>
+                {expandedSections.insurance ? (
+                  <ChevronUp className="w-5 h-5 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                )}
+              </button>
+              {expandedSections.insurance && (
+                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <EditableField
+                    label="Insurance Provider"
+                    value={parsedData.insurance.provider}
+                    onChange={(v) => updateParsedData('insurance', 'provider', v)}
+                  />
+                  <EditableField
+                    label="Policy Number"
+                    value={parsedData.insurance.policyNumber}
+                    onChange={(v) => updateParsedData('insurance', 'policyNumber', v)}
+                  />
+                  <EditableField
+                    label="Group Number"
+                    value={parsedData.insurance.groupNumber}
+                    onChange={(v) => updateParsedData('insurance', 'groupNumber', v)}
+                  />
+                  <EditableField
+                    label="Subscriber Name"
+                    value={parsedData.insurance.subscriberName}
+                    onChange={(v) => updateParsedData('insurance', 'subscriberName', v)}
+                  />
+                  <EditableField
+                    label="Subscriber DOB"
+                    value={parsedData.insurance.subscriberDob}
+                    onChange={(v) => updateParsedData('insurance', 'subscriberDob', v)}
+                    type="date"
+                  />
+                  <EditableField
+                    label="Relationship"
+                    value={parsedData.insurance.relationship}
+                    onChange={(v) => updateParsedData('insurance', 'relationship', v)}
+                  />
+                  <div className="md:col-span-2">
+                    <EditableField
+                      label="Authorization Number"
+                      value={parsedData.insurance.authorizationNumber}
+                      onChange={(v) => updateParsedData('insurance', 'authorizationNumber', v)}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Medical Information */}
+            <div className="glass-card overflow-hidden">
+              <button
+                onClick={() => toggleSection('medical')}
+                className="w-full p-4 flex items-center justify-between bg-purple-500/5"
+              >
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="w-5 h-5 text-purple-500" />
+                  <span className="font-semibold text-foreground">Medical Information</span>
+                  <ConfidenceBadge score={parsedData.confidence.medical} />
+                </div>
+                {expandedSections.medical ? (
+                  <ChevronUp className="w-5 h-5 text-muted-foreground" />
+                ) : (
+                  <ChevronDown className="w-5 h-5 text-muted-foreground" />
+                )}
+              </button>
+              {expandedSections.medical && (
+                <div className="p-4 space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <EditableField
+                      label="Room Number"
+                      value={parsedData.medical.roomNumber}
+                      onChange={(v) => updateParsedData('medical', 'roomNumber', v)}
+                    />
+                    <EditableField
+                      label="Attending Physician"
+                      value={parsedData.medical.attendingPhysician}
+                      onChange={(v) => updateParsedData('medical', 'attendingPhysician', v)}
+                    />
+                    <EditableField
+                      label="Admission Date"
+                      value={parsedData.medical.admissionDate}
+                      onChange={(v) => updateParsedData('medical', 'admissionDate', v)}
+                      type="date"
+                    />
+                    <EditableField
+                      label="Chief Complaint"
+                      value={parsedData.medical.chiefComplaint}
+                      onChange={(v) => updateParsedData('medical', 'chiefComplaint', v)}
+                    />
+                    <div className="md:col-span-2">
+                      <EditableField
+                        label="Primary Diagnosis"
+                        value={parsedData.medical.primaryDiagnosis}
+                        onChange={(v) => updateParsedData('medical', 'primaryDiagnosis', v)}
+                      />
+                    </div>
+                  </div>
+
+                  <ArrayField
+                    label="Allergies"
+                    values={parsedData.medical.allergies}
+                    onChange={(v) => updateParsedData('medical', 'allergies', v)}
+                  />
+
+                  <ArrayField
+                    label="Current Medications"
+                    values={parsedData.medical.medications}
+                    onChange={(v) => updateParsedData('medical', 'medications', v)}
+                  />
+
+                  <ArrayField
+                    label="Past Medical History"
+                    values={parsedData.medical.pastMedicalHistory}
+                    onChange={(v) => updateParsedData('medical', 'pastMedicalHistory', v)}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Save Actions */}
+            <div className="glass-card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-start gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5" />
+                  <p className="text-sm text-muted-foreground">
+                    Review all information before saving. AI-extracted data may need corrections.
+                  </p>
+                </div>
+                <Button
+                  onClick={handleSavePatient}
+                  disabled={isSaving}
+                  className="rounded-xl bg-green-600 hover:bg-green-700"
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Patient
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
