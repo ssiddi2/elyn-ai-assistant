@@ -30,7 +30,7 @@ const workflowSteps = [
     icon: Mic,
     title: 'Speak to ELYN',
     description: 'Dictate your clinical findings naturally',
-    color: 'hsl(45, 93%, 47%)', // primary gold
+    color: 'hsl(210, 100%, 55%)', // primary blue
   },
   {
     icon: FileText,
@@ -42,7 +42,7 @@ const workflowSteps = [
     icon: DollarSign,
     title: 'Billing Codes Ready',
     description: 'CPT, ICD-10, MDM, RVU—all captured',
-    color: 'hsl(38, 92%, 50%)', // warning amber
+    color: 'hsl(210, 90%, 65%)', // light blue accent
   },
 ];
 

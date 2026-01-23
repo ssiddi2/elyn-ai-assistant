@@ -4,7 +4,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ELYN™ Design System - Dark Navy & Orange Theme */
+/* ELYN™ Design System - Dark Navy & Blue Theme */
 
 @layer base {
   :root {
@@ -19,9 +19,9 @@
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    /* Primary - Gold */
-    --primary: 45 93% 47%;
-    --primary-foreground: 222 47% 11%;
+    /* Primary - Blue */
+    --primary: 210 100% 55%;
+    --primary-foreground: 0 0% 100%;
 
     /* Secondary - Light Navy */
     --secondary: 222 30% 90%;
@@ -31,9 +31,9 @@
     --muted: 210 20% 94%;
     --muted-foreground: 215 20% 45%;
 
-    /* Accent - Gold */
-    --accent: 45 93% 47%;
-    --accent-foreground: 222 47% 11%;
+    /* Accent - Blue */
+    --accent: 210 100% 55%;
+    --accent-foreground: 0 0% 100%;
 
     /* Destructive */
     --destructive: 0 72% 51%;
@@ -41,27 +41,27 @@
 
     --border: 220 20% 88%;
     --input: 220 20% 94%;
-    --ring: 45 93% 47%;
+    --ring: 210 100% 55%;
 
     --radius: 0.75rem;
 
     /* Sidebar - Light */
     --sidebar-background: 210 20% 96%;
     --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 45 93% 47%;
-    --sidebar-primary-foreground: 222 47% 11%;
+    --sidebar-primary: 210 100% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 210 20% 92%;
     --sidebar-accent-foreground: 222 47% 11%;
     --sidebar-border: 220 20% 88%;
-    --sidebar-ring: 45 93% 47%;
+    --sidebar-ring: 210 100% 55%;
 
     /* ELYN Brand Colors - Light variant */
     --elyn-deep: 222 47% 95%;
     --elyn-navy: 222 47% 90%;
-    --elyn-teal: 222 45% 85%;
-    --elyn-teal-light: 222 35% 75%;
-    --elyn-gold: 45 93% 47%;
-    --elyn-gold-light: 45 90% 55%;
+    --elyn-teal: 210 80% 85%;
+    --elyn-teal-light: 210 70% 75%;
+    --elyn-gold: 210 100% 55%;
+    --elyn-gold-light: 210 90% 65%;
 
     /* Semantic Colors */
     --success: 152 69% 40%;
@@ -71,7 +71,7 @@
     /* Acuity Colors */
     --acuity-critical: 0 72% 51%;
     --acuity-high: 38 92% 50%;
-    --acuity-moderate: 45 93% 47%;
+    --acuity-moderate: 210 100% 55%;
     --acuity-low: 152 69% 40%;
     
     /* Glass Effects - Light version */
@@ -85,7 +85,7 @@
     --surface-active: 210 20% 90%;
     
     /* Accent Glows - Light version */
-    --glow-primary: 45 93% 47% / 0.15;
+    --glow-primary: 210 100% 55% / 0.15;
     --glow-secondary: 222 47% 50% / 0.1;
     --glow-success: 152 69% 45% / 0.1;
     --glow-warning: 38 92% 50% / 0.15;
@@ -103,8 +103,8 @@
     --popover: 222 47% 12%;
     --popover-foreground: 210 40% 98%;
 
-    /* Primary - Gold */
-    --primary: 45 93% 47%;
+    /* Primary - Blue */
+    --primary: 210 100% 55%;
     --primary-foreground: 0 0% 100%;
 
     /* Secondary - Navy Blue */
@@ -115,8 +115,8 @@
     --muted: 222 45% 16%;
     --muted-foreground: 215 20% 55%;
 
-    /* Accent - Gold */
-    --accent: 45 93% 47%;
+    /* Accent - Blue */
+    --accent: 210 100% 55%;
     --accent-foreground: 0 0% 100%;
 
     /* Destructive */
@@ -125,25 +125,25 @@
 
     --border: 222 40% 20%;
     --input: 222 45% 16%;
-    --ring: 45 93% 47%;
+    --ring: 210 100% 55%;
 
     /* Sidebar - Dark Navy */
     --sidebar-background: 222 47% 9%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 45 93% 47%;
+    --sidebar-primary: 210 100% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 222 45% 16%;
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 222 40% 18%;
-    --sidebar-ring: 45 93% 47%;
+    --sidebar-ring: 210 100% 55%;
 
-    /* ELYN Brand Colors - Navy & Gold */
+    /* ELYN Brand Colors - Navy & Blue */
     --elyn-deep: 222 47% 8%;
     --elyn-navy: 222 47% 14%;
-    --elyn-teal: 222 45% 22%;
-    --elyn-teal-light: 222 35% 35%;
-    --elyn-gold: 45 93% 47%;
-    --elyn-gold-light: 45 90% 55%;
+    --elyn-teal: 210 80% 35%;
+    --elyn-teal-light: 210 70% 45%;
+    --elyn-gold: 210 100% 55%;
+    --elyn-gold-light: 210 90% 65%;
 
     /* Semantic Colors */
     --success: 152 69% 45%;
@@ -153,7 +153,7 @@
     /* Acuity Colors */
     --acuity-critical: 0 72% 51%;
     --acuity-high: 38 92% 50%;
-    --acuity-moderate: 45 93% 47%;
+    --acuity-moderate: 210 100% 55%;
     --acuity-low: 152 69% 45%;
     
     /* Glass Effects - Dark Navy version */
@@ -166,8 +166,8 @@
     --surface-hover: 222 45% 18%;
     --surface-active: 222 42% 22%;
     
-    /* Accent Glows - Gold & Navy */
-    --glow-primary: 45 93% 47% / 0.25;
+    /* Accent Glows - Blue & Navy */
+    --glow-primary: 210 100% 55% / 0.25;
     --glow-secondary: 222 47% 20% / 0.2;
     --glow-success: 152 69% 45% / 0.15;
     --glow-warning: 38 92% 50% / 0.2;
@@ -275,9 +275,9 @@
     box-shadow: 0 0 20px hsl(var(--glow-success));
   }
 
-  /* Gradient text - Navy & Gold */
+  /* Gradient text - Navy & Blue */
   .gradient-text {
-    background: linear-gradient(135deg, hsl(210 40% 98%) 0%, hsl(45 93% 47%) 50%, hsl(45 90% 55%) 100%);
+    background: linear-gradient(135deg, hsl(210 40% 98%) 0%, hsl(210 100% 55%) 50%, hsl(210 90% 65%) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -285,15 +285,15 @@
 
   /* Navy gradient text */
   .gradient-text-blue {
-    background: linear-gradient(135deg, hsl(220 45% 35%) 0%, hsl(220 40% 50%) 100%);
+    background: linear-gradient(135deg, hsl(210 80% 45%) 0%, hsl(210 90% 60%) 100%);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
 
-  /* Gradient background - Navy to Gold */
+  /* Gradient background - Navy to Blue */
   .gradient-bg {
-    background: linear-gradient(135deg, hsl(222 47% 14%) 0%, hsl(45 93% 47%) 100%);
+    background: linear-gradient(135deg, hsl(222 47% 14%) 0%, hsl(210 100% 55%) 100%);
   }
 
   /* Modern input styling */
@@ -398,11 +398,11 @@
   .gradient-text-shimmer {
     background: linear-gradient(
       90deg,
-      hsl(45 93% 47%) 0%,
-      hsl(45 90% 55%) 25%,
+      hsl(210 100% 55%) 0%,
+      hsl(210 90% 65%) 25%,
       hsl(210 40% 98%) 50%,
-      hsl(45 90% 55%) 75%,
-      hsl(45 93% 47%) 100%
+      hsl(210 90% 65%) 75%,
+      hsl(210 100% 55%) 100%
     );
     background-size: 200% auto;
     -webkit-background-clip: text;
