@@ -196,7 +196,7 @@ const Auth = () => {
               transition={{ delay: 0.4 }}
             >
               <span className="text-xs text-foreground/50 tracking-widest uppercase">Powered by</span>
-              <img src={livemedLogo} alt="LiveMed Telehealth" className="h-14 object-contain" />
+              <img src={livemedLogo} alt="LiveMed Telehealth" className="h-20 object-contain" />
             </motion.div>
             
             <motion.p 
