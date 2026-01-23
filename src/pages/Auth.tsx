@@ -166,9 +166,9 @@ const Auth = () => {
               />
             </motion.div>
             
-            {/* ELYN text with gold gradient */}
+            {/* ELYN text with blue gradient */}
             <motion.h1 
-              className="text-6xl font-display font-bold tracking-[0.4em] text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-400 to-amber-500 mb-6"
+              className="text-6xl font-display font-bold tracking-[0.4em] text-transparent bg-clip-text bg-gradient-to-r from-blue-300 via-sky-400 to-blue-500 mb-6"
               animate={{ 
                 backgroundPosition: ['0% 50%', '100% 50%', '0% 50%']
               }}
@@ -334,7 +334,7 @@ const Auth = () => {
 
               <Button
                 type="submit"
-                className="w-full h-12 bg-gradient-to-r from-yellow-500 to-amber-500 hover:from-yellow-600 hover:to-amber-600 text-white font-semibold shadow-lg shadow-amber-500/25"
+                className="w-full h-12 bg-gradient-to-r from-blue-500 to-sky-500 hover:from-blue-600 hover:to-sky-600 text-white font-semibold shadow-lg shadow-blue-500/25"
                 disabled={loading || (!isLogin && !isPasswordValid && password.length > 0)}
               >
                 {loading ? (

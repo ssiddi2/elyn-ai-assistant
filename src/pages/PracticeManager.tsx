@@ -437,7 +437,10 @@ const PracticeManager = () => {
                     setActiveTab('census');
                     // Refresh patients list
                     supabase.from('patients').select('*').eq('user_id', user?.id).then(({ data }) => {
-                      if (data) setPatients(data);
+                      if (data) setPatients(data.map(p => ({
+                        ...p,
+                        status: (p.status as Patient['status']) || 'active'
+                      })));
                     });
                   }}
                   onToast={(message) => toast({ description: message })}
