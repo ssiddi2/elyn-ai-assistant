@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, UserPlus, Loader2, Sparkles, AlertTriangle, Building2, Info } from 'lucide-react';
+import { X, UserPlus, Loader2, Sparkles, AlertTriangle, Building2, Info, CreditCard } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFacility } from '@/contexts/FacilityContext';
-import { formatClaimsName, validateClaimsData, formatMRN } from '@/lib/claimsFormatting';
+import { formatClaimsName, validateClaimsData, formatMRN, PLAN_TYPES, SUBSCRIBER_RELATIONSHIPS } from '@/lib/claimsFormatting';
 import { ClaimsValidationBadge } from '@/components/billing/ClaimsValidationBadge';
 import AI from '@/services/ai';
 import { z } from 'zod';
@@ -51,6 +51,11 @@ export default function QuickAddPatient({
     acuity: 'moderate',
     facilityId: selectedFacilityId === 'all' ? '' : selectedFacilityId,
     insuranceId: '',
+    insuranceName: '',
+    insuranceGroup: '',
+    insurancePlanType: '',
+    subscriberName: '',
+    subscriberRelationship: 'Self',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingBilling, setIsGeneratingBilling] = useState(false);
@@ -134,7 +139,7 @@ export default function QuickAddPatient({
       const claimsName = formatClaimsName(formData.name);
       const formattedMrn = formatMRN(formData.mrn);
 
-      // Create patient with required facility and hospital
+      // Create patient with required facility and insurance info
       const { data: patient, error: patientError } = await supabase
         .from('patients')
         .insert({
@@ -145,6 +150,12 @@ export default function QuickAddPatient({
           room: formData.room.trim() || null,
           diagnosis: formData.diagnosis.trim() || null,
           facility_id: formData.facilityId,
+          insurance_id: formData.insuranceId.trim() || null,
+          insurance_name: formData.insuranceName.trim() || null,
+          insurance_group: formData.insuranceGroup.trim() || null,
+          insurance_plan_type: formData.insurancePlanType || null,
+          subscriber_name: formData.subscriberRelationship === 'Self' ? null : formData.subscriberName.trim() || null,
+          subscriber_relationship: formData.subscriberRelationship || null,
         })
         .select()
         .single();
@@ -190,6 +201,11 @@ export default function QuickAddPatient({
         acuity: 'moderate',
         facilityId: selectedFacilityId === 'all' ? '' : selectedFacilityId,
         insuranceId: '',
+        insuranceName: '',
+        insuranceGroup: '',
+        insurancePlanType: '',
+        subscriberName: '',
+        subscriberRelationship: 'Self',
       });
       setGeneratedBilling(null);
       onPatientAdded();
@@ -336,18 +352,103 @@ export default function QuickAddPatient({
                   </div>
                 </div>
 
-                {/* Insurance ID */}
-                <div>
-                  <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Insurance/Member ID *
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.insuranceId}
-                    onChange={(e) => setFormData({ ...formData, insuranceId: e.target.value })}
-                    placeholder="Policy or member ID"
-                    className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
-                  />
+                {/* Insurance Section */}
+                <div className="space-y-3 pt-2 border-t border-border">
+                  <h4 className="text-sm font-medium text-foreground flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-primary" />
+                    Insurance Information
+                  </h4>
+                  
+                  {/* Insurance Name & Plan Type */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Insurance/Payer Name *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.insuranceName}
+                        onChange={(e) => setFormData({ ...formData, insuranceName: e.target.value })}
+                        placeholder="Blue Cross Blue Shield"
+                        className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Plan Type
+                      </label>
+                      <select
+                        value={formData.insurancePlanType}
+                        onChange={(e) => setFormData({ ...formData, insurancePlanType: e.target.value })}
+                        className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      >
+                        <option value="">Select type</option>
+                        {PLAN_TYPES.map((type) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Member ID & Group Number */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Member/Policy ID *
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.insuranceId}
+                        onChange={(e) => setFormData({ ...formData, insuranceId: e.target.value })}
+                        placeholder="ABC123456789"
+                        className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Group Number
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.insuranceGroup}
+                        onChange={(e) => setFormData({ ...formData, insuranceGroup: e.target.value })}
+                        placeholder="GRP12345"
+                        className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Subscriber Info */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-sm font-medium text-foreground mb-1.5">
+                        Relationship to Subscriber
+                      </label>
+                      <select
+                        value={formData.subscriberRelationship}
+                        onChange={(e) => setFormData({ ...formData, subscriberRelationship: e.target.value })}
+                        className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      >
+                        {SUBSCRIBER_RELATIONSHIPS.map((rel) => (
+                          <option key={rel} value={rel}>{rel}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {formData.subscriberRelationship !== 'Self' && (
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">
+                          Subscriber Name
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.subscriberName}
+                          onChange={(e) => setFormData({ ...formData, subscriberName: e.target.value })}
+                          placeholder="Primary subscriber name"
+                          className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Facility Selection - Required */}
