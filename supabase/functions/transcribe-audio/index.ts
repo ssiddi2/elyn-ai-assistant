@@ -33,9 +33,10 @@ serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      console.error('LOVABLE_API_KEY is not configured');
+    // Use GOOGLE_API_KEY for direct Gemini API access (external Supabase compatible)
+    const GOOGLE_API_KEY = Deno.env.get('GOOGLE_API_KEY');
+    if (!GOOGLE_API_KEY) {
+      console.error('GOOGLE_API_KEY is not configured');
       throw new Error('Service configuration error');
     }
 
@@ -66,46 +67,46 @@ serve(async (req) => {
       throw new Error(`Audio file is too large. Maximum size is ${MAX_AUDIO_SIZE_MB}MB.`);
     }
 
-    console.log('Transcribing audio with Gemini, mimeType:', normalizedMimeType, 'size:', Math.round(estimatedSize / 1024), 'KB');
+    console.log('Transcribing audio with Google Gemini API, mimeType:', normalizedMimeType, 'size:', Math.round(estimatedSize / 1024), 'KB');
 
-    // Use Lovable AI Gateway with Gemini for audio transcription
-    // Gemini accepts audio via data URL format in image_url field
-    const audioDataUrl = `data:${normalizedMimeType};base64,${audio}`;
-    
-    console.log('Sending audio to Lovable AI Gateway...');
-    
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [
+    // Build Google Gemini native request format
+    const geminiRequestBody = {
+      contents: [{
+        role: 'user',
+        parts: [
           {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Transcribe this audio recording accurately. Return ONLY the transcription text, no timestamps, no speaker labels, no formatting, no commentary. Just the exact words spoken.'
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: audioDataUrl
-                }
-              }
-            ]
+            inline_data: {
+              mime_type: normalizedMimeType,
+              data: audio
+            }
+          },
+          {
+            text: 'Transcribe this audio recording accurately. Return ONLY the transcription text, no timestamps, no speaker labels, no formatting, no commentary. Just the exact words spoken.'
           }
-        ],
-        max_tokens: 4096,
-      }),
-    });
+        ]
+      }],
+      generationConfig: {
+        maxOutputTokens: 4096
+      }
+    };
+    
+    console.log('Sending audio to Google Gemini API...');
+    
+    // Call Google Gemini API directly with API key as query parameter
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GOOGLE_API_KEY}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(geminiRequestBody),
+      }
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Lovable AI Gateway error:', response.status, errorText);
+      console.error('Google Gemini API error:', response.status, errorText);
       
       if (response.status === 429) {
         return new Response(
@@ -118,25 +119,25 @@ serve(async (req) => {
         );
       }
 
-      if (response.status === 402) {
+      if (response.status === 403) {
         return new Response(
           JSON.stringify({ 
-            error: 'AI credits exhausted. Please add credits to continue using transcription.', 
-            errorCode: 'PAYMENT_REQUIRED',
-            success: false 
-          }),
-          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      if (response.status === 401) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'Transcription service is not configured. Please contact support.', 
+            error: 'API access denied. Please check your Google API key configuration.', 
             errorCode: 'AUTH_ERROR',
             success: false 
           }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (response.status === 400) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Invalid request to transcription service. Please try again with a different recording.', 
+            errorCode: 'BAD_REQUEST',
+            success: false 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
       
@@ -144,7 +145,24 @@ serve(async (req) => {
     }
 
     const result = await response.json();
-    const transcription = result.choices?.[0]?.message?.content || '';
+    
+    // Parse Google Gemini response format: candidates[0].content.parts[0].text
+    const transcription = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    
+    if (!transcription) {
+      console.warn('Empty transcription received from Gemini API');
+      // Check if there's a block reason
+      if (result.candidates?.[0]?.finishReason === 'SAFETY') {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Audio content was blocked by safety filters. Please try with different content.', 
+            errorCode: 'CONTENT_FILTERED',
+            success: false 
+          }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
     
     console.log('Transcription successful, length:', transcription.length);
 
