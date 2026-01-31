@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -6,6 +6,8 @@ import { useFacility } from '@/contexts/FacilityContext';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { formatClaimsName, validateClaimsData, formatMRN } from '@/lib/claimsFormatting';
+import { ClaimsValidationBadge } from '@/components/billing/ClaimsValidationBadge';
 import {
   FileText,
   Camera,
@@ -24,6 +26,7 @@ import {
   X,
   ImageIcon,
   RotateCcw,
+  Info,
 } from 'lucide-react';
 
 interface ParsedData {
@@ -303,19 +306,55 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
     setIsParsing(false);
   };
 
+  // Claims validation for current parsed data
+  const claimsValidation = useMemo(() => {
+    if (!parsedData) return null;
+    return validateClaimsData({
+      name: parsedData.patient.name,
+      dob: parsedData.patient.dob,
+      mrn: parsedData.patient.mrn,
+      insuranceId: parsedData.insurance.policyNumber,
+    });
+  }, [parsedData]);
+
+  // Format name for claims when saving
+  const handleFormatNameForClaims = () => {
+    if (!parsedData?.patient.name) return;
+    const formatted = formatClaimsName(parsedData.patient.name);
+    updateParsedData('patient', 'name', formatted);
+    onToast('Name formatted for claims: ' + formatted);
+  };
+
   const handleSavePatient = async () => {
     if (!parsedData || !user) return;
 
+    // Validate claims data before saving
+    const validation = validateClaimsData({
+      name: parsedData.patient.name,
+      dob: parsedData.patient.dob,
+      mrn: parsedData.patient.mrn,
+      insuranceId: parsedData.insurance.policyNumber,
+    });
+
+    if (!validation.isValid) {
+      onToast('Missing required fields: ' + validation.errors.join(', '));
+      return;
+    }
+
     setIsSaving(true);
     try {
+      // Format name and MRN for claims compliance
+      const claimsName = formatClaimsName(parsedData.patient.name);
+      const formattedMrn = formatMRN(parsedData.patient.mrn);
+
       // Create or update patient
       const { data: patient, error } = await supabase
         .from('patients')
         .insert({
           user_id: user.id,
           facility_id: defaultFacilityId,
-          name: parsedData.patient.name || 'Unknown Patient',
-          mrn: parsedData.patient.mrn,
+          name: claimsName || 'Unknown Patient',
+          mrn: formattedMrn || null,
           dob: parsedData.patient.dob,
           room: parsedData.medical.roomNumber,
           diagnosis: parsedData.medical.primaryDiagnosis,
@@ -326,7 +365,7 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
 
       if (error) throw error;
 
-      onToast('Patient saved successfully');
+      onToast('Patient saved with claims-compliant formatting');
       onPatientCreated?.(patient.id);
 
       // Clear the form
@@ -541,44 +580,87 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
                 )}
               </button>
               {expandedSections.patient && (
-                <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <EditableField
-                    label="Full Name"
-                    value={parsedData.patient.name}
-                    onChange={(v) => updateParsedData('patient', 'name', v)}
-                  />
-                  <EditableField
-                    label="Date of Birth"
-                    value={parsedData.patient.dob}
-                    onChange={(v) => updateParsedData('patient', 'dob', v)}
-                    type="date"
-                  />
-                  <EditableField
-                    label="MRN"
-                    value={parsedData.patient.mrn}
-                    onChange={(v) => updateParsedData('patient', 'mrn', v)}
-                  />
-                  <EditableField
-                    label="Gender"
-                    value={parsedData.patient.gender}
-                    onChange={(v) => updateParsedData('patient', 'gender', v)}
-                  />
-                  <EditableField
-                    label="Phone"
-                    value={parsedData.patient.phone}
-                    onChange={(v) => updateParsedData('patient', 'phone', v)}
-                  />
-                  <EditableField
-                    label="Emergency Contact"
-                    value={parsedData.patient.emergencyContact}
-                    onChange={(v) => updateParsedData('patient', 'emergencyContact', v)}
-                  />
-                  <div className="md:col-span-2">
+                <div className="p-4 space-y-4">
+                  {/* Claims formatting notice */}
+                  <div className="flex items-start gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                    <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                    <div className="text-xs text-muted-foreground">
+                      <p className="font-medium text-foreground">Claims Formatting</p>
+                      <p className="mt-0.5">Names will be saved as "LAST, FIRST" uppercase format. Special characters are removed.</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleFormatNameForClaims}
+                      className="ml-auto text-xs h-7"
+                    >
+                      Format Now
+                    </Button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground flex items-center gap-1">
+                        Full Name <span className="text-destructive">*</span>
+                        {parsedData.patient.name && (
+                          <span className="text-muted-foreground/60 ml-1">
+                            → {formatClaimsName(parsedData.patient.name)}
+                          </span>
+                        )}
+                      </label>
+                      <input
+                        type="text"
+                        value={parsedData.patient.name || ''}
+                        onChange={(e) => updateParsedData('patient', 'name', e.target.value)}
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        placeholder="Enter patient name"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">
+                        Date of Birth <span className="text-destructive">*</span>
+                      </label>
+                      <input
+                        type="date"
+                        value={parsedData.patient.dob || ''}
+                        onChange={(e) => updateParsedData('patient', 'dob', e.target.value)}
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">
+                        MRN <span className="text-destructive">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={parsedData.patient.mrn || ''}
+                        onChange={(e) => updateParsedData('patient', 'mrn', e.target.value)}
+                        className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                        placeholder="Enter MRN"
+                      />
+                    </div>
                     <EditableField
-                      label="Address"
-                      value={parsedData.patient.address}
-                      onChange={(v) => updateParsedData('patient', 'address', v)}
+                      label="Gender"
+                      value={parsedData.patient.gender}
+                      onChange={(v) => updateParsedData('patient', 'gender', v)}
                     />
+                    <EditableField
+                      label="Phone"
+                      value={parsedData.patient.phone}
+                      onChange={(v) => updateParsedData('patient', 'phone', v)}
+                    />
+                    <EditableField
+                      label="Emergency Contact"
+                      value={parsedData.patient.emergencyContact}
+                      onChange={(v) => updateParsedData('patient', 'emergencyContact', v)}
+                    />
+                    <div className="md:col-span-2">
+                      <EditableField
+                        label="Address"
+                        value={parsedData.patient.address}
+                        onChange={(v) => updateParsedData('patient', 'address', v)}
+                      />
+                    </div>
                   </div>
                 </div>
               )}
@@ -608,11 +690,18 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
                     value={parsedData.insurance.provider}
                     onChange={(v) => updateParsedData('insurance', 'provider', v)}
                   />
-                  <EditableField
-                    label="Policy Number"
-                    value={parsedData.insurance.policyNumber}
-                    onChange={(v) => updateParsedData('insurance', 'policyNumber', v)}
-                  />
+                  <div className="space-y-1">
+                    <label className="text-xs text-muted-foreground">
+                      Policy/Member ID <span className="text-destructive">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={parsedData.insurance.policyNumber || ''}
+                      onChange={(e) => updateParsedData('insurance', 'policyNumber', e.target.value)}
+                      className="w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      placeholder="Enter policy/member ID"
+                    />
+                  </div>
                   <EditableField
                     label="Group Number"
                     value={parsedData.insurance.groupNumber}
@@ -718,16 +807,18 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
 
             {/* Save Actions */}
             <div className="glass-card p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 text-amber-500 mt-0.5" />
-                  <p className="text-sm text-muted-foreground">
-                    Review all information before saving. AI-extracted data may need corrections.
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-2 flex-1">
+                  {claimsValidation && (
+                    <ClaimsValidationBadge validation={claimsValidation} />
+                  )}
+                  <p className="text-sm text-muted-foreground ml-2">
+                    Review all information before saving. Names will be formatted for claims.
                   </p>
                 </div>
                 <Button
                   onClick={handleSavePatient}
-                  disabled={isSaving}
+                  disabled={isSaving || (claimsValidation && !claimsValidation.isValid)}
                   className="rounded-xl bg-green-600 hover:bg-green-700"
                 >
                   {isSaving ? (
