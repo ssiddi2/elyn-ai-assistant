@@ -1,143 +1,215 @@
 
-# Plan: Modify `transcribe-audio` Edge Function for External Supabase
+
+# Plan: Add Echo/EKG Billing + Improve Patient Intake
 
 ## Overview
 
-The `transcribe-audio` function currently uses the Lovable AI Gateway (`https://ai.gateway.lovable.dev/v1/chat/completions`) with `LOVABLE_API_KEY`. Since this key is not available in external Supabase projects, we need to modify it to call the **Google Gemini API directly** using a `GOOGLE_API_KEY`.
+This plan addresses three needs:
+1. Faster patient intake using EMR face sheets (already partially built - needs enhancement)
+2. Add Echo and EKG billing codes to the system
+3. CSV export is already working - no changes needed
 
-## Current vs. New Architecture
+---
+
+## Part 1: Enhance Face Sheet Parser for Faster Patient Intake
+
+The Face Sheet Parser already exists and works well. To make it even faster for physicians who have EMR access:
+
+### Current Workflow (Already Available)
+1. Copy face sheet text from EMR
+2. Paste into ELYN Face Sheet Parser
+3. AI extracts all patient info automatically
+4. Review and save
+
+### Enhancement: Add "Quick Paste" Button to Patient List
+
+**File: `src/components/patients/PatientList.tsx`**
+- Add a prominent "Paste Face Sheet" button alongside "Quick Add"
+- Opens Face Sheet Parser directly
+- One-click workflow: Copy from EMR → Click button → Paste → Save
+
+### Enhancement: Image/Photo Capture for Face Sheets
+
+**File: `src/components/facesheet/FaceSheetParser.tsx`**
+- Add camera/photo upload option for mobile
+- Use AI vision to read printed face sheets
+- Useful for facilities with paper printouts
+
+---
+
+## Part 2: Add Echo and EKG Billing Codes
+
+### New CPT Codes to Add
+
+**File: `src/data/billingCodes.ts`**
+
+#### Echocardiogram CPT Codes:
+| Code | Description | RVU |
+|------|-------------|-----|
+| 93306 | TTE Complete with Doppler | 1.50 |
+| 93307 | TTE Complete w/o Doppler | 1.30 |
+| 93308 | TTE Limited/Follow-up | 0.92 |
+| 93320 | Doppler Echo Complete | 0.40 |
+| 93321 | Doppler Echo Follow-up | 0.25 |
+| 93325 | Doppler Color Flow Add-on | 0.18 |
+| 93350 | Stress Echo | 1.75 |
+| 93351 | Stress Echo with Contrast | 1.90 |
+
+#### EKG/ECG CPT Codes:
+| Code | Description | RVU |
+|------|-------------|-----|
+| 93000 | EKG 12-Lead Complete | 0.17 |
+| 93005 | EKG 12-Lead Tracing Only | 0.00 |
+| 93010 | EKG 12-Lead Interpretation | 0.17 |
+| 93015 | Stress Test Complete | 1.18 |
+| 93016 | Stress Test Supervision | 0.45 |
+| 93017 | Stress Test Tracing | 0.00 |
+| 93018 | Stress Test Interpretation | 0.70 |
+| 93040 | Rhythm EKG 1-3 Leads | 0.15 |
+| 93042 | Rhythm EKG Interpretation | 0.15 |
+
+---
+
+## Part 3: Create Organized CPT Code Categories
+
+Instead of a flat list, organize codes into categories for faster selection:
 
 ```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                         CURRENT (Lovable Cloud)                      │
-├─────────────────────────────────────────────────────────────────────┤
-│  Client → transcribe-audio → Lovable Gateway → Gemini               │
-│                                (LOVABLE_API_KEY)                     │
-└─────────────────────────────────────────────────────────────────────┘
-
-┌─────────────────────────────────────────────────────────────────────┐
-│                         NEW (External Supabase)                      │
-├─────────────────────────────────────────────────────────────────────┤
-│  Client → transcribe-audio → Google Gemini API (Direct)             │
-│                                (GOOGLE_API_KEY)                      │
-└─────────────────────────────────────────────────────────────────────┘
+CPT Categories:
+├── E/M Codes (existing)
+│   ├── Initial Hospital Care
+│   ├── Subsequent Hospital Care
+│   ├── Discharge Day
+│   ├── Critical Care
+│   └── Consults
+├── Cardiac Procedures (NEW)
+│   ├── Echocardiogram
+│   └── EKG/ECG
+└── (Future: Pulmonary, GI, etc.)
 ```
 
-## Key Changes
+### UI Changes
 
-### 1. API Endpoint Change
-- **Current**: `https://ai.gateway.lovable.dev/v1/chat/completions` (OpenAI-compatible format)
-- **New**: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent` (Google native format)
+**File: `src/components/billing/CreateBillModal.tsx`**
+- Add tabs/accordion for code categories
+- "E/M Codes" | "Echo" | "EKG" tabs
+- Quick search/filter within each category
 
-### 2. API Key
-- **Current**: `LOVABLE_API_KEY` (auto-provisioned, not exportable)
-- **New**: `GOOGLE_API_KEY` (obtain from [Google AI Studio](https://aistudio.google.com/app/apikey))
+**File: `src/components/patients/QuickAddPatient.tsx`**
+- Update billing code generation to recognize cardiac procedures
+- If diagnosis mentions "echo", "echocardiogram", "cardiac", auto-suggest Echo codes
+- If diagnosis mentions "EKG", "ECG", "arrhythmia", auto-suggest EKG codes
 
-### 3. Request Format Change
-The Lovable Gateway uses OpenAI-compatible format, but the direct Google API uses a different structure:
+---
 
-**Current (OpenAI format)**:
-```json
-{
-  "model": "google/gemini-2.5-flash",
-  "messages": [{
-    "role": "user",
-    "content": [
-      { "type": "text", "text": "Transcribe..." },
-      { "type": "image_url", "image_url": { "url": "data:audio/webm;base64,..." }}
-    ]
-  }]
-}
-```
+## Implementation Files
 
-**New (Google native format)**:
-```json
-{
-  "contents": [{
-    "role": "user",
-    "parts": [
-      { "inline_data": { "mime_type": "audio/webm", "data": "..." }},
-      { "text": "Transcribe this audio accurately..." }
-    ]
-  }],
-  "generationConfig": { "maxOutputTokens": 4096 }
-}
-```
+### Files to Modify:
 
-### 4. Response Parsing Change
-- **Current**: `result.choices[0].message.content`
-- **New**: `result.candidates[0].content.parts[0].text`
+1. **`src/data/billingCodes.ts`**
+   - Add `ECHO_CPT_CODES` and `EKG_CPT_CODES` objects
+   - Create `CPT_CATEGORIES` for organized display
+   - Keep `CPT_CODES` for backwards compatibility
+
+2. **`src/components/billing/CreateBillModal.tsx`**
+   - Add tabbed interface for code categories
+   - Include Echo and EKG sections
+
+3. **`src/components/patients/QuickAddPatient.tsx`**  
+   - Update AI code suggestions to include cardiac procedures
+
+4. **`src/components/billing/BillsExportModal.tsx`**
+   - No changes needed - already handles any CPT code
+
+5. **`src/pages/Index.tsx`** (optional)
+   - Add "Paste Face Sheet" shortcut to main patient area
+
+### New Files (optional enhancement):
+
+- `src/components/billing/CptCodeSelector.tsx` - Reusable code picker with categories
 
 ---
 
 ## Technical Details
 
-### Modified `supabase/functions/transcribe-audio/index.ts`
+### Updated billingCodes.ts Structure:
 
-**Changes Summary:**
-1. Replace `LOVABLE_API_KEY` with `GOOGLE_API_KEY`
-2. Change endpoint from Lovable Gateway to Google `generativelanguage.googleapis.com`
-3. Transform request body to Google's `contents/parts` format with `inline_data`
-4. Update response parsing for Google's `candidates` structure
-5. Update error handling for Google-specific status codes
+```typescript
+// E/M Codes (existing)
+export const CPT_CODES = { ... };
 
-**New Code Structure:**
-```text
-Lines 36-40: Get GOOGLE_API_KEY instead of LOVABLE_API_KEY
-Lines 69-90: Build Google-native request format with inline_data
-Lines 77: Use Google endpoint with API key as query parameter
-Lines 100-145: Parse Google's response format (candidates[0].content.parts[0].text)
+// Echocardiogram Codes (NEW)
+export const ECHO_CPT_CODES = {
+  '93306': { code: '93306', desc: 'TTE Complete with Doppler', rvu: 1.50 },
+  '93307': { code: '93307', desc: 'TTE Complete w/o Doppler', rvu: 1.30 },
+  // ... etc
+};
+
+// EKG Codes (NEW)
+export const EKG_CPT_CODES = {
+  '93000': { code: '93000', desc: 'EKG 12-Lead Complete', rvu: 0.17 },
+  '93010': { code: '93010', desc: 'EKG Interpretation Only', rvu: 0.17 },
+  // ... etc
+};
+
+// Combined for lookups
+export const ALL_CPT_CODES = {
+  ...CPT_CODES,
+  ...ECHO_CPT_CODES,
+  ...EKG_CPT_CODES,
+};
+
+// Categories for UI display
+export const CPT_CATEGORIES = {
+  'E/M': CPT_CODES,
+  'Echo': ECHO_CPT_CODES,
+  'EKG': EKG_CPT_CODES,
+};
 ```
 
----
+### Edge Function Update
 
-## Setup Required in External Supabase
-
-### Step 1: Get Google API Key
-1. Go to [Google AI Studio](https://aistudio.google.com/app/apikey)
-2. Click "Create API Key"
-3. Copy the generated key
-
-### Step 2: Add Secret to External Supabase
-1. Go to your Supabase Dashboard → Settings → Secrets
-2. Add: `GOOGLE_API_KEY` = `your-google-api-key`
-
-### Step 3: Deploy Edge Function
-After pushing the code changes to your new Lovable project (connected to external Supabase), the edge function will auto-deploy.
+**File: `supabase/functions/generate-note-with-billing/index.ts`**
+- Update AI prompt to recognize cardiac procedures
+- When transcript mentions Echo/EKG, suggest appropriate CPT codes
+- No structural changes needed - just prompt refinement
 
 ---
 
-## Other Edge Functions (No Changes Needed)
+## CSV Export
 
-These functions already use direct API keys and will work as-is:
+Already working. Current export includes:
+- Patient Name, MRN, DOB
+- Date of Service, Facility
+- CPT Code, Description, Modifiers
+- Diagnosis (ICD-10)
+- RVU, Estimated Value
+- Status, Provider
 
-| Function | API Used | Secret Required |
-|----------|----------|-----------------|
-| `generate-note-with-billing` | Cohere API | `COHERE_API_KEY` |
-| `correct-medical-terms` | Cohere API | `COHERE_API_KEY` |
-| `elevenlabs-scribe-token` | ElevenLabs | `ELEVENLABS_API_KEY` |
-| `generate-handoff` | Cohere API | `COHERE_API_KEY` |
-
----
-
-## Complete Modified Code
-
-The new `transcribe-audio/index.ts` will:
-- Use `GOOGLE_API_KEY` from environment
-- Call `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`
-- Send audio as `inline_data` with base64 and mime_type
-- Parse response from `candidates[0].content.parts[0].text`
-- Maintain all existing error handling, size validation, and security features
+This will automatically include new Echo/EKG codes without modification.
 
 ---
 
-## Migration Checklist
+## Workflow After Implementation
 
-1. Create new Lovable project connected to external Supabase (`gkpyqqpgpgqtmglqjkvj`)
-2. Push this codebase to the new project via GitHub
-3. Add required secrets in external Supabase Dashboard:
-   - `GOOGLE_API_KEY` (new - from Google AI Studio)
-   - `COHERE_API_KEY` (if not already configured)
-   - `ELEVENLABS_API_KEY` (if using real-time transcription)
-4. Edge functions will auto-deploy with the new code
-5. Test the transcription flow end-to-end
+### Fastest Patient Intake (with EMR access):
+1. Open patient in EMR
+2. Copy face sheet text
+3. Click "Paste Face Sheet" in ELYN
+4. Paste → AI extracts everything
+5. Review → Save (10 seconds total)
+
+### Creating Echo/EKG Bill:
+1. Open Create Bill
+2. Select "Echo" or "EKG" tab
+3. Pick specific code (93306, 93000, etc.)
+4. Add patient info
+5. Save
+
+### CSV Export for Billing Software:
+1. Go to Billing page
+2. Click "Export"
+3. Filter by date/facility if needed
+4. Download CSV
+5. Upload to billing software
+
