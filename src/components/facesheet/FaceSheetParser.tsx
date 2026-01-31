@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFacility } from '@/contexts/FacilityContext';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import {
   FileText,
+  Camera,
   Upload,
   Sparkles,
   User,
@@ -20,6 +22,8 @@ import {
   Loader2,
   ClipboardPaste,
   X,
+  ImageIcon,
+  RotateCcw,
 } from 'lucide-react';
 
 interface ParsedData {
@@ -163,7 +167,9 @@ function ArrayField({
 export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheetParserProps) {
   const { user } = useAuth();
   const { facilities, selectedFacilityId } = useFacility();
+  const [inputMode, setInputMode] = useState<'text' | 'photo'>('text');
   const [inputText, setInputText] = useState('');
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [isParsing, setIsParsing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [parsedData, setParsedData] = useState<ParsedData | null>(null);
@@ -172,6 +178,8 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
     insurance: true,
     medical: true,
   });
+  
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const defaultFacilityId = selectedFacilityId !== 'all'
     ? selectedFacilityId
@@ -191,16 +199,96 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
     }
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (max 4MB for base64)
+    if (file.size > 4 * 1024 * 1024) {
+      onToast('Image too large. Please use an image under 4MB.');
+      return;
+    }
+
+    try {
+      // Compress and convert to base64
+      const base64 = await compressAndConvertToBase64(file);
+      setCapturedImage(base64);
+      onToast('Image captured successfully');
+    } catch (e) {
+      console.error('Error processing image:', e);
+      onToast('Failed to process image');
+    }
+  };
+
+  const compressAndConvertToBase64 = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          // Create canvas for compression
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            reject(new Error('Could not get canvas context'));
+            return;
+          }
+
+          // Calculate new dimensions (max 1920px on longest side)
+          const maxSize = 1920;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height && width > maxSize) {
+            height = (height * maxSize) / width;
+            width = maxSize;
+          } else if (height > maxSize) {
+            width = (width * maxSize) / height;
+            height = maxSize;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          ctx.drawImage(img, 0, 0, width, height);
+
+          // Convert to base64 with compression
+          const base64 = canvas.toDataURL('image/jpeg', 0.8);
+          resolve(base64);
+        };
+        img.onerror = () => reject(new Error('Failed to load image'));
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const clearImage = () => {
+    setCapturedImage(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleParse = async () => {
-    if (!inputText.trim()) {
+    // Validate input based on mode
+    if (inputMode === 'text' && !inputText.trim()) {
       onToast('Please enter or paste face sheet content');
+      return;
+    }
+    if (inputMode === 'photo' && !capturedImage) {
+      onToast('Please capture or upload an image');
       return;
     }
 
     setIsParsing(true);
     try {
+      const body = inputMode === 'photo' 
+        ? { imageBase64: capturedImage }
+        : { text: inputText };
+
       const { data, error } = await supabase.functions.invoke('parse-face-sheet', {
-        body: { text: inputText },
+        body,
       });
 
       if (error) throw error;
@@ -243,6 +331,7 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
 
       // Clear the form
       setInputText('');
+      setCapturedImage(null);
       setParsedData(null);
     } catch (e) {
       console.error('Save error:', e);
@@ -266,6 +355,8 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
     });
   };
 
+  const hasInput = inputMode === 'text' ? inputText.trim().length > 0 : !!capturedImage;
+
   return (
     <div className="space-y-4">
       {/* Input Section */}
@@ -275,37 +366,127 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
             <FileText className="w-5 h-5 text-primary" />
             Face Sheet Input
           </h3>
-          <Button
-            onClick={handlePaste}
-            variant="outline"
-            size="sm"
-            className="rounded-lg"
-          >
-            <ClipboardPaste className="w-4 h-4 mr-1.5" />
-            Paste
-          </Button>
         </div>
 
-        <textarea
-          value={inputText}
-          onChange={(e) => setInputText(e.target.value)}
-          placeholder="Paste or type the face sheet content here...&#10;&#10;Include patient demographics, insurance information, medical history, allergies, medications, and any other relevant information from the face sheet."
-          className="w-full h-48 px-4 py-3 bg-surface border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
-        />
+        <Tabs value={inputMode} onValueChange={(v) => setInputMode(v as 'text' | 'photo')} className="w-full">
+          <TabsList className="w-full mb-4">
+            <TabsTrigger value="text" className="flex-1 gap-2">
+              <ClipboardPaste className="w-4 h-4" />
+              Paste Text
+            </TabsTrigger>
+            <TabsTrigger value="photo" className="flex-1 gap-2">
+              <Camera className="w-4 h-4" />
+              Capture Photo
+            </TabsTrigger>
+          </TabsList>
 
-        <div className="flex items-center justify-between mt-3">
-          <p className="text-xs text-muted-foreground">
-            {inputText.length} characters
-          </p>
+          <TabsContent value="text" className="mt-0">
+            <div className="flex justify-end mb-2">
+              <Button
+                onClick={handlePaste}
+                variant="outline"
+                size="sm"
+                className="rounded-lg"
+              >
+                <ClipboardPaste className="w-4 h-4 mr-1.5" />
+                Paste
+              </Button>
+            </div>
+            <textarea
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              placeholder="Paste or type the face sheet content here...&#10;&#10;Include patient demographics, insurance information, medical history, allergies, medications, and any other relevant information from the face sheet."
+              className="w-full h-48 px-4 py-3 bg-surface border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+            />
+            <p className="text-xs text-muted-foreground mt-2">
+              {inputText.length} characters
+            </p>
+          </TabsContent>
+
+          <TabsContent value="photo" className="mt-0">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+
+            {capturedImage ? (
+              // Image preview
+              <div className="space-y-3">
+                <div className="relative rounded-xl overflow-hidden border border-border bg-muted/30">
+                  <img 
+                    src={capturedImage} 
+                    alt="Captured face sheet" 
+                    className="w-full h-auto max-h-64 object-contain"
+                  />
+                  <div className="absolute top-2 right-2 flex gap-2">
+                    <Button
+                      onClick={clearImage}
+                      size="sm"
+                      variant="secondary"
+                      className="rounded-lg shadow-lg"
+                    >
+                      <RotateCcw className="w-4 h-4 mr-1.5" />
+                      Retake
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground text-center">
+                  Image ready for parsing. Click "Parse with AI" to extract patient data.
+                </p>
+              </div>
+            ) : (
+              // Capture buttons
+              <div className="border-2 border-dashed border-border rounded-xl p-8 text-center space-y-4">
+                <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto">
+                  <ImageIcon className="w-8 h-8 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium text-foreground">Capture Face Sheet</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Take a photo or upload an image of the printed face sheet
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    variant="default"
+                    className="rounded-xl gap-2"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Take Photo
+                  </Button>
+                  <Button
+                    onClick={() => fileInputRef.current?.click()}
+                    variant="outline"
+                    className="rounded-xl gap-2"
+                  >
+                    <Upload className="w-4 h-4" />
+                    Upload Image
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  💡 Tip: Ensure good lighting and hold the camera steady for best results
+                </p>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+
+        <div className="flex justify-end mt-4">
           <Button
             onClick={handleParse}
-            disabled={isParsing || !inputText.trim()}
+            disabled={isParsing || !hasInput}
             className="rounded-xl bg-primary hover:bg-primary/90"
           >
             {isParsing ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Parsing...
+                {inputMode === 'photo' ? 'Reading Image...' : 'Parsing...'}
               </>
             ) : (
               <>
