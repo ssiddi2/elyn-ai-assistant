@@ -97,7 +97,18 @@ export interface PatientClaimsData {
   dob?: string | null;
   mrn?: string | null;
   insuranceId?: string | null;
+  insuranceName?: string | null;
+  insuranceGroup?: string | null;
+  insurancePlanType?: string | null;
+  subscriberName?: string | null;
+  subscriberRelationship?: string | null;
 }
+
+export type PlanType = 'Medicare' | 'Medicaid' | 'Commercial' | 'Tricare' | 'Workers Comp' | 'Self-Pay' | 'Other';
+export type SubscriberRelationship = 'Self' | 'Spouse' | 'Child' | 'Other';
+
+export const PLAN_TYPES: PlanType[] = ['Medicare', 'Medicaid', 'Commercial', 'Tricare', 'Workers Comp', 'Self-Pay', 'Other'];
+export const SUBSCRIBER_RELATIONSHIPS: SubscriberRelationship[] = ['Self', 'Spouse', 'Child', 'Other'];
 
 export function validateClaimsData(data: PatientClaimsData): ClaimsValidationResult {
   const errors: string[] = [];

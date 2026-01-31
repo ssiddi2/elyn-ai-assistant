@@ -347,7 +347,7 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
       const claimsName = formatClaimsName(parsedData.patient.name);
       const formattedMrn = formatMRN(parsedData.patient.mrn);
 
-      // Create or update patient
+      // Create or update patient with insurance info
       const { data: patient, error } = await supabase
         .from('patients')
         .insert({
@@ -359,6 +359,11 @@ export default function FaceSheetParser({ onPatientCreated, onToast }: FaceSheet
           room: parsedData.medical.roomNumber,
           diagnosis: parsedData.medical.primaryDiagnosis,
           allergies: parsedData.medical.allergies,
+          insurance_id: parsedData.insurance.policyNumber || null,
+          insurance_name: parsedData.insurance.provider || null,
+          insurance_group: parsedData.insurance.groupNumber || null,
+          subscriber_name: parsedData.insurance.subscriberName || null,
+          subscriber_relationship: parsedData.insurance.relationship || null,
         })
         .select()
         .single();

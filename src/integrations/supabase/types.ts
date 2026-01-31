@@ -421,10 +421,16 @@ export type Database = {
           facility_id: string
           hospital: string | null
           id: string
+          insurance_group: string | null
+          insurance_id: string | null
+          insurance_name: string | null
+          insurance_plan_type: string | null
           mrn: string | null
           name: string
           room: string | null
           status: string
+          subscriber_name: string | null
+          subscriber_relationship: string | null
           updated_at: string
           user_id: string
         }
@@ -436,10 +442,16 @@ export type Database = {
           facility_id: string
           hospital?: string | null
           id?: string
+          insurance_group?: string | null
+          insurance_id?: string | null
+          insurance_name?: string | null
+          insurance_plan_type?: string | null
           mrn?: string | null
           name: string
           room?: string | null
           status?: string
+          subscriber_name?: string | null
+          subscriber_relationship?: string | null
           updated_at?: string
           user_id: string
         }
@@ -451,10 +463,16 @@ export type Database = {
           facility_id?: string
           hospital?: string | null
           id?: string
+          insurance_group?: string | null
+          insurance_id?: string | null
+          insurance_name?: string | null
+          insurance_plan_type?: string | null
           mrn?: string | null
           name?: string
           room?: string | null
           status?: string
+          subscriber_name?: string | null
+          subscriber_relationship?: string | null
           updated_at?: string
           user_id?: string
         }
