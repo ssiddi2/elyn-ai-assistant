@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { CPT_CODES, MODIFIERS } from '@/data/billingCodes';
+import { CPT_CATEGORIES, ALL_CPT_CODES, MODIFIERS, CptCategoryKey } from '@/data/billingCodes';
 import { BillInput } from '@/hooks/useBilling';
 import ModalBackdrop from './ModalBackdrop';
 
@@ -26,8 +27,9 @@ export const CreateBillModal = ({ onComplete, onCancel, addBill }: CreateBillMod
     diagnosis: '',
   });
   const [saving, setSaving] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<CptCategoryKey>('E/M');
 
-  const cpt = CPT_CODES[bill.cptCode];
+  const cpt = ALL_CPT_CODES[bill.cptCode];
   const rvu = cpt?.rvu || 0;
 
   const handleSave = async () => {
@@ -53,6 +55,8 @@ export const CreateBillModal = ({ onComplete, onCancel, addBill }: CreateBillMod
       toast.error(result.error || 'Failed to create bill');
     }
   };
+
+  const categoryKeys = Object.keys(CPT_CATEGORIES) as CptCategoryKey[];
 
   return (
     <ModalBackdrop onClose={onCancel}>
@@ -124,25 +128,40 @@ export const CreateBillModal = ({ onComplete, onCancel, addBill }: CreateBillMod
             />
           </div>
 
+          {/* CPT Code Selection with Tabs */}
           <div>
             <label className="text-sm text-muted-foreground mb-3 block">CPT Code *</label>
-            <div className="grid grid-cols-3 gap-2 max-h-36 overflow-auto scrollbar-thin">
-              {Object.values(CPT_CODES).map(c => (
-                <button
-                  key={c.code}
-                  onClick={() => setBill({ ...bill, cptCode: c.code })}
-                  className={cn(
-                    "p-2 rounded-lg border text-left transition-all",
-                    bill.cptCode === c.code
-                      ? "bg-secondary/20 border-secondary text-foreground"
-                      : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50"
-                  )}
-                >
-                  <div className="text-sm font-medium">{c.code}</div>
-                  <div className="text-xs text-success">{c.rvu} RVU</div>
-                </button>
+            <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v as CptCategoryKey)}>
+              <TabsList className="grid w-full grid-cols-3 mb-3">
+                {categoryKeys.map(cat => (
+                  <TabsTrigger key={cat} value={cat} className="text-xs">
+                    {cat}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {categoryKeys.map(cat => (
+                <TabsContent key={cat} value={cat} className="mt-0">
+                  <div className="grid grid-cols-3 gap-2 max-h-36 overflow-auto scrollbar-thin">
+                    {Object.values(CPT_CATEGORIES[cat]).map(c => (
+                      <button
+                        key={c.code}
+                        onClick={() => setBill({ ...bill, cptCode: c.code })}
+                        className={cn(
+                          "p-2 rounded-lg border text-left transition-all",
+                          bill.cptCode === c.code
+                            ? "bg-secondary/20 border-secondary text-foreground"
+                            : "bg-muted/30 border-border text-muted-foreground hover:bg-muted/50"
+                        )}
+                      >
+                        <div className="text-sm font-medium">{c.code}</div>
+                        <div className="text-[10px] truncate">{c.desc}</div>
+                        <div className="text-xs text-success">{c.rvu} RVU</div>
+                      </button>
+                    ))}
+                  </div>
+                </TabsContent>
               ))}
-            </div>
+            </Tabs>
           </div>
 
           <div>
