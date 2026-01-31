@@ -1,4 +1,4 @@
-// CPT Codes Library
+// CPT Codes Library - E/M Codes (Hospital)
 export const CPT_CODES: Record<string, { code: string; desc: string; rvu: number }> = {
   '99221': { code: '99221', desc: 'Initial Hospital Care - Low', rvu: 1.92 },
   '99222': { code: '99222', desc: 'Initial Hospital Care - Mod', rvu: 2.61 },
@@ -16,6 +16,47 @@ export const CPT_CODES: Record<string, { code: string; desc: string; rvu: number
   '99254': { code: '99254', desc: 'Consult L4', rvu: 3.30 },
   '99255': { code: '99255', desc: 'Consult L5', rvu: 4.24 },
 };
+
+// Echocardiogram CPT Codes
+export const ECHO_CPT_CODES: Record<string, { code: string; desc: string; rvu: number }> = {
+  '93306': { code: '93306', desc: 'TTE Complete with Doppler', rvu: 1.50 },
+  '93307': { code: '93307', desc: 'TTE Complete w/o Doppler', rvu: 1.30 },
+  '93308': { code: '93308', desc: 'TTE Limited/Follow-up', rvu: 0.92 },
+  '93320': { code: '93320', desc: 'Doppler Echo Complete', rvu: 0.40 },
+  '93321': { code: '93321', desc: 'Doppler Echo Follow-up', rvu: 0.25 },
+  '93325': { code: '93325', desc: 'Doppler Color Flow Add-on', rvu: 0.18 },
+  '93350': { code: '93350', desc: 'Stress Echo', rvu: 1.75 },
+  '93351': { code: '93351', desc: 'Stress Echo with Contrast', rvu: 1.90 },
+};
+
+// EKG/ECG CPT Codes
+export const EKG_CPT_CODES: Record<string, { code: string; desc: string; rvu: number }> = {
+  '93000': { code: '93000', desc: 'EKG 12-Lead Complete', rvu: 0.17 },
+  '93005': { code: '93005', desc: 'EKG 12-Lead Tracing Only', rvu: 0.00 },
+  '93010': { code: '93010', desc: 'EKG 12-Lead Interpretation', rvu: 0.17 },
+  '93015': { code: '93015', desc: 'Stress Test Complete', rvu: 1.18 },
+  '93016': { code: '93016', desc: 'Stress Test Supervision', rvu: 0.45 },
+  '93017': { code: '93017', desc: 'Stress Test Tracing', rvu: 0.00 },
+  '93018': { code: '93018', desc: 'Stress Test Interpretation', rvu: 0.70 },
+  '93040': { code: '93040', desc: 'Rhythm EKG 1-3 Leads', rvu: 0.15 },
+  '93042': { code: '93042', desc: 'Rhythm EKG Interpretation', rvu: 0.15 },
+};
+
+// Combined lookup for all CPT codes
+export const ALL_CPT_CODES: Record<string, { code: string; desc: string; rvu: number }> = {
+  ...CPT_CODES,
+  ...ECHO_CPT_CODES,
+  ...EKG_CPT_CODES,
+};
+
+// Categories for UI display
+export const CPT_CATEGORIES = {
+  'E/M': CPT_CODES,
+  'Echo': ECHO_CPT_CODES,
+  'EKG': EKG_CPT_CODES,
+} as const;
+
+export type CptCategoryKey = keyof typeof CPT_CATEGORIES;
 
 export const MODIFIERS = [
   { code: '25', desc: 'Significant E/M' },
