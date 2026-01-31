@@ -1,215 +1,214 @@
 
 
-# Plan: Add Echo/EKG Billing + Improve Patient Intake
+# Plan: Add Camera/Photo Capture for Face Sheet Intake
 
 ## Overview
 
-This plan addresses three needs:
-1. Faster patient intake using EMR face sheets (already partially built - needs enhancement)
-2. Add Echo and EKG billing codes to the system
-3. CSV export is already working - no changes needed
+Since physicians may not have direct EMR text access at the bedside, adding a **camera capture feature** allows them to photograph printed face sheets. The AI will use vision capabilities to read the document and extract patient information automatically.
 
----
+## Current State
 
-## Part 1: Enhance Face Sheet Parser for Faster Patient Intake
+The Face Sheet Parser already exists (`src/components/facesheet/FaceSheetParser.tsx`) with:
+- Text paste functionality (works well for EMR copy/paste)
+- AI parsing via `parse-face-sheet` edge function
+- Editable extracted fields with confidence scores
 
-The Face Sheet Parser already exists and works well. To make it even faster for physicians who have EMR access:
-
-### Current Workflow (Already Available)
-1. Copy face sheet text from EMR
-2. Paste into ELYN Face Sheet Parser
-3. AI extracts all patient info automatically
-4. Review and save
-
-### Enhancement: Add "Quick Paste" Button to Patient List
-
-**File: `src/components/patients/PatientList.tsx`**
-- Add a prominent "Paste Face Sheet" button alongside "Quick Add"
-- Opens Face Sheet Parser directly
-- One-click workflow: Copy from EMR → Click button → Paste → Save
-
-### Enhancement: Image/Photo Capture for Face Sheets
-
-**File: `src/components/facesheet/FaceSheetParser.tsx`**
-- Add camera/photo upload option for mobile
-- Use AI vision to read printed face sheets
-- Useful for facilities with paper printouts
-
----
-
-## Part 2: Add Echo and EKG Billing Codes
-
-### New CPT Codes to Add
-
-**File: `src/data/billingCodes.ts`**
-
-#### Echocardiogram CPT Codes:
-| Code | Description | RVU |
-|------|-------------|-----|
-| 93306 | TTE Complete with Doppler | 1.50 |
-| 93307 | TTE Complete w/o Doppler | 1.30 |
-| 93308 | TTE Limited/Follow-up | 0.92 |
-| 93320 | Doppler Echo Complete | 0.40 |
-| 93321 | Doppler Echo Follow-up | 0.25 |
-| 93325 | Doppler Color Flow Add-on | 0.18 |
-| 93350 | Stress Echo | 1.75 |
-| 93351 | Stress Echo with Contrast | 1.90 |
-
-#### EKG/ECG CPT Codes:
-| Code | Description | RVU |
-|------|-------------|-----|
-| 93000 | EKG 12-Lead Complete | 0.17 |
-| 93005 | EKG 12-Lead Tracing Only | 0.00 |
-| 93010 | EKG 12-Lead Interpretation | 0.17 |
-| 93015 | Stress Test Complete | 1.18 |
-| 93016 | Stress Test Supervision | 0.45 |
-| 93017 | Stress Test Tracing | 0.00 |
-| 93018 | Stress Test Interpretation | 0.70 |
-| 93040 | Rhythm EKG 1-3 Leads | 0.15 |
-| 93042 | Rhythm EKG Interpretation | 0.15 |
-
----
-
-## Part 3: Create Organized CPT Code Categories
-
-Instead of a flat list, organize codes into categories for faster selection:
-
-```text
-CPT Categories:
-├── E/M Codes (existing)
-│   ├── Initial Hospital Care
-│   ├── Subsequent Hospital Care
-│   ├── Discharge Day
-│   ├── Critical Care
-│   └── Consults
-├── Cardiac Procedures (NEW)
-│   ├── Echocardiogram
-│   └── EKG/ECG
-└── (Future: Pulmonary, GI, etc.)
+However, the edge function currently returns an error for images:
+```
+"Image processing not yet implemented. Please use OCR or paste the text."
 ```
 
-### UI Changes
+## Proposed Solution
 
-**File: `src/components/billing/CreateBillModal.tsx`**
-- Add tabs/accordion for code categories
-- "E/M Codes" | "Echo" | "EKG" tabs
-- Quick search/filter within each category
-
-**File: `src/components/patients/QuickAddPatient.tsx`**
-- Update billing code generation to recognize cardiac procedures
-- If diagnosis mentions "echo", "echocardiogram", "cardiac", auto-suggest Echo codes
-- If diagnosis mentions "EKG", "ECG", "arrhythmia", auto-suggest EKG codes
+Add camera/photo capture to the Face Sheet Parser that:
+1. Uses the device camera (mobile) or file upload (desktop)
+2. Sends the image to the edge function
+3. Uses AI vision (Gemini) to read the document
+4. Extracts patient information just like the text flow
 
 ---
 
-## Implementation Files
+## Part 1: Update Face Sheet Parser UI
 
-### Files to Modify:
+**File: `src/components/facesheet/FaceSheetParser.tsx`**
 
-1. **`src/data/billingCodes.ts`**
-   - Add `ECHO_CPT_CODES` and `EKG_CPT_CODES` objects
-   - Create `CPT_CATEGORIES` for organized display
-   - Keep `CPT_CODES` for backwards compatibility
+### New Features:
+- Add "Take Photo" button for mobile (uses `navigator.mediaDevices.getUserMedia`)
+- Add "Upload Image" button for desktop/mobile (file input)
+- Show image preview before processing
+- Tab interface: "Paste Text" | "Capture Photo"
 
-2. **`src/components/billing/CreateBillModal.tsx`**
-   - Add tabbed interface for code categories
-   - Include Echo and EKG sections
+### UI Changes:
+```text
+┌─────────────────────────────────────────┐
+│ Face Sheet Input                        │
+├─────────────────────────────────────────┤
+│  [Paste Text]  [📷 Capture Photo]       │  ← Tab selector
+├─────────────────────────────────────────┤
+│                                         │
+│  (If Paste Text tab)                    │
+│  ┌─────────────────────────────────┐    │
+│  │ Paste face sheet content...     │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│  (If Capture Photo tab)                 │
+│  ┌─────────────────────────────────┐    │
+│  │  📷 Take Photo  📁 Upload File  │    │
+│  │                                 │    │
+│  │  [Image Preview Area]           │    │
+│  └─────────────────────────────────┘    │
+│                                         │
+│            [Parse with AI]              │
+└─────────────────────────────────────────┘
+```
 
-3. **`src/components/patients/QuickAddPatient.tsx`**  
-   - Update AI code suggestions to include cardiac procedures
+---
 
-4. **`src/components/billing/BillsExportModal.tsx`**
-   - No changes needed - already handles any CPT code
+## Part 2: Update Edge Function for Vision
 
-5. **`src/pages/Index.tsx`** (optional)
-   - Add "Paste Face Sheet" shortcut to main patient area
+**File: `supabase/functions/parse-face-sheet/index.ts`**
 
-### New Files (optional enhancement):
+### Changes:
+- Switch from Cohere to Lovable AI (Gemini) which supports vision
+- Accept `imageBase64` parameter
+- Use Gemini's multimodal capabilities to read the image
+- Extract text from the image and parse patient information
 
-- `src/components/billing/CptCodeSelector.tsx` - Reusable code picker with categories
+### New Flow:
+```text
+Image (base64) → Gemini Vision API → Extracted Text → Structured JSON
+```
+
+### Technical Implementation:
+- Use `google/gemini-2.5-flash` model via Lovable AI gateway
+- Send image as `image_url` with base64 data
+- Prompt asks AI to read the face sheet and extract all fields
+- Returns same structured JSON format as text parsing
+
+---
+
+## Part 3: Camera Capture Implementation
+
+### Mobile Camera Access:
+```typescript
+// Request camera access
+const stream = await navigator.mediaDevices.getUserMedia({
+  video: { facingMode: 'environment' } // Back camera
+});
+
+// Capture frame to canvas
+const canvas = document.createElement('canvas');
+canvas.getContext('2d').drawImage(video, 0, 0);
+const imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
+```
+
+### File Upload (Desktop/Mobile):
+```typescript
+<input 
+  type="file" 
+  accept="image/*" 
+  capture="environment"  // Opens camera on mobile
+  onChange={handleFileSelect}
+/>
+```
+
+---
+
+## Files to Modify
+
+1. **`src/components/facesheet/FaceSheetParser.tsx`**
+   - Add tab interface for Text vs Photo input
+   - Add camera capture functionality
+   - Add file upload functionality
+   - Add image preview component
+   - Update parse function to send image when applicable
+
+2. **`supabase/functions/parse-face-sheet/index.ts`**
+   - Switch from Cohere API to Lovable AI (Gemini with vision)
+   - Handle `imageBase64` input
+   - Use multimodal prompt for image parsing
 
 ---
 
 ## Technical Details
 
-### Updated billingCodes.ts Structure:
+### Updated Edge Function Structure:
 
 ```typescript
-// E/M Codes (existing)
-export const CPT_CODES = { ... };
+// Use Lovable AI instead of Cohere for vision support
+const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
 
-// Echocardiogram Codes (NEW)
-export const ECHO_CPT_CODES = {
-  '93306': { code: '93306', desc: 'TTE Complete with Doppler', rvu: 1.50 },
-  '93307': { code: '93307', desc: 'TTE Complete w/o Doppler', rvu: 1.30 },
-  // ... etc
-};
+const { text, imageBase64 } = await req.json();
 
-// EKG Codes (NEW)
-export const EKG_CPT_CODES = {
-  '93000': { code: '93000', desc: 'EKG 12-Lead Complete', rvu: 0.17 },
-  '93010': { code: '93010', desc: 'EKG Interpretation Only', rvu: 0.17 },
-  // ... etc
-};
+let content: any[];
+if (imageBase64) {
+  // Vision mode - send image
+  content = [
+    { type: 'text', text: 'Parse this face sheet image...' },
+    { type: 'image_url', image_url: { url: imageBase64 }}
+  ];
+} else {
+  // Text mode - send text
+  content = [{ type: 'text', text: `Parse this face sheet:\n\n${text}` }];
+}
 
-// Combined for lookups
-export const ALL_CPT_CODES = {
-  ...CPT_CODES,
-  ...ECHO_CPT_CODES,
-  ...EKG_CPT_CODES,
-};
-
-// Categories for UI display
-export const CPT_CATEGORIES = {
-  'E/M': CPT_CODES,
-  'Echo': ECHO_CPT_CODES,
-  'EKG': EKG_CPT_CODES,
-};
+const response = await fetch(LOVABLE_AI_URL, {
+  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}` },
+  body: JSON.stringify({
+    model: 'google/gemini-2.5-flash',
+    messages: [{ role: 'user', content }]
+  })
+});
 ```
 
-### Edge Function Update
+### Camera Component Flow:
 
-**File: `supabase/functions/generate-note-with-billing/index.ts`**
-- Update AI prompt to recognize cardiac procedures
-- When transcript mentions Echo/EKG, suggest appropriate CPT codes
-- No structural changes needed - just prompt refinement
-
----
-
-## CSV Export
-
-Already working. Current export includes:
-- Patient Name, MRN, DOB
-- Date of Service, Facility
-- CPT Code, Description, Modifiers
-- Diagnosis (ICD-10)
-- RVU, Estimated Value
-- Status, Provider
-
-This will automatically include new Echo/EKG codes without modification.
+1. User taps "Take Photo" button
+2. Camera view opens in modal/sheet
+3. User frames the face sheet and taps capture
+4. Image preview shown with "Retake" or "Use Photo" options
+5. On confirm, image sent to edge function
+6. AI extracts data and populates fields
 
 ---
 
-## Workflow After Implementation
+## User Workflow After Implementation
 
-### Fastest Patient Intake (with EMR access):
-1. Open patient in EMR
-2. Copy face sheet text
-3. Click "Paste Face Sheet" in ELYN
-4. Paste → AI extracts everything
-5. Review → Save (10 seconds total)
+### Mobile (at bedside):
+1. Open ELYN → Face Sheet Parser
+2. Tap "Capture Photo" tab
+3. Tap "Take Photo" → Camera opens
+4. Point at printed face sheet → Capture
+5. Review image → Confirm
+6. AI reads document and extracts all data
+7. Review/edit → Save patient
 
-### Creating Echo/EKG Bill:
-1. Open Create Bill
-2. Select "Echo" or "EKG" tab
-3. Pick specific code (93306, 93000, etc.)
-4. Add patient info
-5. Save
+### Desktop (with scanned document):
+1. Open Face Sheet Parser
+2. Tap "Capture Photo" tab
+3. Click "Upload File"
+4. Select scanned face sheet image
+5. AI processes and extracts data
+6. Review/edit → Save patient
 
-### CSV Export for Billing Software:
-1. Go to Billing page
-2. Click "Export"
-3. Filter by date/facility if needed
-4. Download CSV
-5. Upload to billing software
+---
+
+## Alternative: Simple File Input (Faster to Implement)
+
+If full camera capture is too complex, a simpler approach uses HTML file input with `capture` attribute:
+
+```html
+<input type="file" accept="image/*" capture="environment" />
+```
+
+This automatically opens the camera on mobile devices and file picker on desktop. Same end result with less code.
+
+---
+
+## Considerations
+
+- **Image Size**: Compress images before sending (max ~4MB for base64)
+- **Lighting**: Add tip for users to ensure good lighting
+- **Orientation**: Handle portrait/landscape automatically
+- **Privacy**: Images processed by AI but not stored permanently
 
