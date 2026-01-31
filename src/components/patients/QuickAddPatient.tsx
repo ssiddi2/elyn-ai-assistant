@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, UserPlus, Loader2, Sparkles, AlertTriangle, Building2 } from 'lucide-react';
+import { X, UserPlus, Loader2, Sparkles, AlertTriangle, Building2, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFacility } from '@/contexts/FacilityContext';
+import { formatClaimsName, validateClaimsData, formatMRN } from '@/lib/claimsFormatting';
+import { ClaimsValidationBadge } from '@/components/billing/ClaimsValidationBadge';
 import AI from '@/services/ai';
 import { z } from 'zod';
 
@@ -42,11 +44,13 @@ export default function QuickAddPatient({
   const [formData, setFormData] = useState({
     name: '',
     mrn: '',
+    dob: '',
     room: '',
     diagnosis: '',
     chiefComplaint: '',
     acuity: 'moderate',
     facilityId: selectedFacilityId === 'all' ? '' : selectedFacilityId,
+    insuranceId: '',
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGeneratingBilling, setIsGeneratingBilling] = useState(false);
@@ -57,6 +61,16 @@ export default function QuickAddPatient({
     em: string;
     rvu: number;
   } | null>(null);
+
+  // Claims validation
+  const claimsValidation = useMemo(() => {
+    return validateClaimsData({
+      name: formData.name,
+      dob: formData.dob,
+      mrn: formData.mrn,
+      insuranceId: formData.insuranceId,
+    });
+  }, [formData.name, formData.dob, formData.mrn, formData.insuranceId]);
 
   const validateForm = () => {
     try {
@@ -108,15 +122,26 @@ export default function QuickAddPatient({
       return;
     }
 
+    // Check claims validation - warn but don't block
+    if (!claimsValidation.isValid) {
+      // Allow save but show warning
+      console.warn('Claims validation warnings:', claimsValidation.errors);
+    }
+
     setIsSubmitting(true);
     try {
+      // Format name and MRN for claims compliance
+      const claimsName = formatClaimsName(formData.name);
+      const formattedMrn = formatMRN(formData.mrn);
+
       // Create patient with required facility and hospital
       const { data: patient, error: patientError } = await supabase
         .from('patients')
         .insert({
           user_id: user.id,
-          name: formData.name.trim(),
-          mrn: formData.mrn.trim() || null,
+          name: claimsName.trim(),
+          mrn: formattedMrn || null,
+          dob: formData.dob || null,
           room: formData.room.trim() || null,
           diagnosis: formData.diagnosis.trim() || null,
           facility_id: formData.facilityId,
@@ -135,7 +160,9 @@ export default function QuickAddPatient({
           .from('bills')
           .insert({
             user_id: user.id,
-            patient_name: formData.name.trim(),
+            patient_name: claimsName.trim(),
+            patient_mrn: formattedMrn || null,
+            patient_dob: formData.dob || null,
             date_of_service: new Date().toISOString().split('T')[0],
             cpt_code: generatedBilling.em || generatedBilling.cpt[0]?.code || '99213',
             cpt_description: generatedBilling.cpt[0]?.description || 'Office visit',
@@ -156,11 +183,13 @@ export default function QuickAddPatient({
       setFormData({
         name: '',
         mrn: '',
+        dob: '',
         room: '',
         diagnosis: '',
         chiefComplaint: '',
         acuity: 'moderate',
         facilityId: selectedFacilityId === 'all' ? '' : selectedFacilityId,
+        insuranceId: '',
       });
       setGeneratedBilling(null);
       onPatientAdded();
@@ -235,16 +264,29 @@ export default function QuickAddPatient({
 
               {/* Form */}
               <div className="p-4 space-y-4">
-                {/* Name */}
+                {/* Claims formatting info */}
+                <div className="flex items-start gap-2 p-3 bg-primary/5 rounded-lg border border-primary/20">
+                  <Info className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
+                  <div className="text-xs text-muted-foreground flex-1">
+                    <p>Names saved as <span className="font-medium text-foreground">LAST, FIRST</span> for claims compliance.</p>
+                  </div>
+                  <ClaimsValidationBadge validation={claimsValidation} />
+                </div>
+
+                {/* Name with preview */}
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1.5">
-                    Patient Name *
+                    Patient Name * {formData.name && (
+                      <span className="text-xs font-normal text-muted-foreground">
+                        → {formatClaimsName(formData.name)}
+                      </span>
+                    )}
                   </label>
                   <input
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="John Smith"
+                    placeholder="John Smith or Smith, John"
                     className={cn(
                       "w-full px-3 py-2.5 rounded-xl bg-card border text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20",
                       errors.name ? "border-destructive" : "border-border focus:border-primary"
@@ -255,17 +297,28 @@ export default function QuickAddPatient({
                   )}
                 </div>
 
-                {/* MRN & Room */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* MRN, DOB & Room */}
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1.5">
-                      MRN
+                      MRN *
                     </label>
                     <input
                       type="text"
                       value={formData.mrn}
                       onChange={(e) => setFormData({ ...formData, mrn: e.target.value })}
                       placeholder="12345"
+                      className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-foreground mb-1.5">
+                      DOB *
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.dob}
+                      onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
                       className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
@@ -281,6 +334,20 @@ export default function QuickAddPatient({
                       className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
+                </div>
+
+                {/* Insurance ID */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1.5">
+                    Insurance/Member ID *
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.insuranceId}
+                    onChange={(e) => setFormData({ ...formData, insuranceId: e.target.value })}
+                    placeholder="Policy or member ID"
+                    className="w-full px-3 py-2.5 rounded-xl bg-card border border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+                  />
                 </div>
 
                 {/* Facility Selection - Required */}
