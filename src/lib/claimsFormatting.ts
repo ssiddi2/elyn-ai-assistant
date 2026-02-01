@@ -186,3 +186,39 @@ export function formatMRN(mrn: string | null | undefined): string {
   if (!mrn) return '';
   return mrn.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 }
+
+/**
+ * Format insurance display string for claims report
+ */
+export function formatInsuranceDisplay(data: PatientClaimsData): string {
+  const parts: string[] = [];
+  
+  if (data.insuranceName) {
+    parts.push(data.insuranceName);
+  }
+  
+  if (data.insuranceId) {
+    parts.push(`ID: ${data.insuranceId}`);
+  }
+  
+  if (data.insuranceGroup) {
+    parts.push(`Grp: ${data.insuranceGroup}`);
+  }
+  
+  if (data.insurancePlanType) {
+    parts.push(`(${data.insurancePlanType})`);
+  }
+  
+  return parts.join(' | ') || 'No insurance on file';
+}
+
+/**
+ * Get subscriber display string
+ */
+export function formatSubscriberDisplay(data: PatientClaimsData): string | null {
+  if (!data.subscriberName || data.subscriberRelationship === 'Self') {
+    return null;
+  }
+  
+  return `Subscriber: ${data.subscriberName} (${data.subscriberRelationship || 'Relationship unknown'})`;
+}

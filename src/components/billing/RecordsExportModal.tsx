@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, FileDown, CalendarIcon } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, FileDown, CalendarIcon, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -7,7 +7,9 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { UnifiedBill } from '@/hooks/useBilling';
+import { supabase } from '@/integrations/supabase/client';
 import ModalBackdrop from './ModalBackdrop';
+import ClaimsReadyPrintReport from './ClaimsReadyPrintReport';
 
 interface RecordsExportModalProps {
   records: UnifiedBill[];
@@ -24,6 +26,26 @@ export const RecordsExportModal = ({
   const [endDate, setEndDate] = useState<Date | undefined>();
   const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'submitted'>('all');
   const [facilityFilter, setFacilityFilter] = useState<string>('');
+  const [showClaimsReport, setShowClaimsReport] = useState(false);
+  const [providerInfo, setProviderInfo] = useState<{ name: string; npi?: string }>({ name: '' });
+
+  // Fetch provider info for claims report
+  useEffect(() => {
+    const fetchProvider = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('full_name, npi_number')
+          .eq('user_id', user.id)
+          .single();
+        if (profile) {
+          setProviderInfo({ name: profile.full_name || '', npi: profile.npi_number || undefined });
+        }
+      }
+    };
+    fetchProvider();
+  }, []);
 
   const getFilteredRecords = () => {
     let filtered = records;
@@ -67,6 +89,18 @@ export const RecordsExportModal = ({
 
   const hasFilters = startDate || endDate || statusFilter !== 'all' || facilityFilter;
 
+  if (showClaimsReport) {
+    return (
+      <ClaimsReadyPrintReport
+        bills={filteredRecords}
+        startDate={startDate}
+        endDate={endDate}
+        providerName={providerInfo.name}
+        providerNPI={providerInfo.npi}
+        onClose={() => setShowClaimsReport(false)}
+      />
+    );
+  }
   return (
     <ModalBackdrop onClose={onClose}>
       <div className="glass-card p-6">
@@ -222,6 +256,16 @@ export const RecordsExportModal = ({
 
         <div className="flex gap-3 mt-6">
           <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+          <Button
+            onClick={() => setShowClaimsReport(true)}
+            disabled={filteredRecords.length === 0}
+            variant="outline"
+            className="flex items-center gap-2"
+            title="Print claims-ready report with insurance info"
+          >
+            <FileText className="w-4 h-4" />
+            Claims Report
+          </Button>
           <Button
             onClick={handleExport}
             disabled={filteredRecords.length === 0}
