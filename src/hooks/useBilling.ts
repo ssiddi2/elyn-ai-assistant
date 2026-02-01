@@ -26,6 +26,13 @@ export interface UnifiedBill {
   patient_name: string;
   patient_mrn: string | null;
   patient_dob: string | null;
+  // Insurance info (for claims)
+  insurance_id: string | null;
+  insurance_name: string | null;
+  insurance_group: string | null;
+  insurance_plan_type: string | null;
+  subscriber_name: string | null;
+  subscriber_relationship: string | null;
   // Billing codes
   cpt_codes: string[];
   cpt_description: string | null;
@@ -98,6 +105,12 @@ export function useBilling(initialFilters?: BillingFilters) {
             name,
             mrn,
             dob,
+            insurance_id,
+            insurance_name,
+            insurance_group,
+            insurance_plan_type,
+            subscriber_name,
+            subscriber_relationship,
             facility_id,
             facilities (name)
           )
@@ -144,6 +157,12 @@ export function useBilling(initialFilters?: BillingFilters) {
       patient_name: r.clinical_notes?.patients?.name || 'Unknown',
       patient_mrn: r.clinical_notes?.patients?.mrn || null,
       patient_dob: r.clinical_notes?.patients?.dob || null,
+      insurance_id: r.clinical_notes?.patients?.insurance_id || null,
+      insurance_name: r.clinical_notes?.patients?.insurance_name || null,
+      insurance_group: r.clinical_notes?.patients?.insurance_group || null,
+      insurance_plan_type: r.clinical_notes?.patients?.insurance_plan_type || null,
+      subscriber_name: r.clinical_notes?.patients?.subscriber_name || null,
+      subscriber_relationship: r.clinical_notes?.patients?.subscriber_relationship || null,
       cpt_codes: r.cpt_codes || [],
       cpt_description: null,
       icd10_codes: r.icd10_codes || [],
@@ -224,6 +243,13 @@ export function useBilling(initialFilters?: BillingFilters) {
       patient_name: b.patient_name,
       patient_mrn: b.patient_mrn,
       patient_dob: b.patient_dob,
+      // Manual bills don't have insurance info yet - would need separate lookup
+      insurance_id: null,
+      insurance_name: null,
+      insurance_group: null,
+      insurance_plan_type: null,
+      subscriber_name: null,
+      subscriber_relationship: null,
       cpt_codes: [b.cpt_code],
       cpt_description: b.cpt_description,
       icd10_codes: [],
