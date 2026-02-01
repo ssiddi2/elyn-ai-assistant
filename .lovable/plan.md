@@ -1,214 +1,153 @@
 
-
-# Plan: Add Camera/Photo Capture for Face Sheet Intake
+# Claims-Ready Print Report for Multi-Hospital Billing Submission
 
 ## Overview
 
-Since physicians may not have direct EMR text access at the bedside, adding a **camera capture feature** allows them to photograph printed face sheets. The AI will use vision capabilities to read the document and extract patient information automatically.
+This plan creates a new **ClaimsReadyPrintReport** component that transforms billing data into a print-optimized, claims-compliant format. It supports physicians rounding at multiple hospitals by grouping bills by facility, with all required insurance and patient data properly formatted.
 
-## Current State
+## What You'll Get
 
-The Face Sheet Parser already exists (`src/components/facesheet/FaceSheetParser.tsx`) with:
-- Text paste functionality (works well for EMR copy/paste)
-- AI parsing via `parse-face-sheet` edge function
-- Editable extracted fields with confidence scores
+### Print Report Features
+- **Claims-formatted patient names** - "LASTNAME, FIRSTNAME" uppercase format (no special characters)
+- **Complete patient identifiers** - DOB (MM/DD/YYYY), MRN, Insurance Member ID
+- **Full insurance details** - Payer name, Group number, Plan type, Subscriber info
+- **Facility grouping** - Bills organized by hospital with subtotals per facility
+- **Provider information** - Rendering provider name and NPI number
+- **Professional layout** - Clean, print-optimized design with ELYN branding
 
-However, the edge function currently returns an error for images:
-```
-"Image processing not yet implemented. Please use OCR or paste the text."
-```
+### Report Structure
 
-## Proposed Solution
-
-Add camera/photo capture to the Face Sheet Parser that:
-1. Uses the device camera (mobile) or file upload (desktop)
-2. Sends the image to the edge function
-3. Uses AI vision (Gemini) to read the document
-4. Extracts patient information just like the text flow
-
----
-
-## Part 1: Update Face Sheet Parser UI
-
-**File: `src/components/facesheet/FaceSheetParser.tsx`**
-
-### New Features:
-- Add "Take Photo" button for mobile (uses `navigator.mediaDevices.getUserMedia`)
-- Add "Upload Image" button for desktop/mobile (file input)
-- Show image preview before processing
-- Tab interface: "Paste Text" | "Capture Photo"
-
-### UI Changes:
 ```text
-┌─────────────────────────────────────────┐
-│ Face Sheet Input                        │
-├─────────────────────────────────────────┤
-│  [Paste Text]  [📷 Capture Photo]       │  ← Tab selector
-├─────────────────────────────────────────┤
-│                                         │
-│  (If Paste Text tab)                    │
-│  ┌─────────────────────────────────┐    │
-│  │ Paste face sheet content...     │    │
-│  └─────────────────────────────────┘    │
-│                                         │
-│  (If Capture Photo tab)                 │
-│  ┌─────────────────────────────────┐    │
-│  │  📷 Take Photo  📁 Upload File  │    │
-│  │                                 │    │
-│  │  [Image Preview Area]           │    │
-│  └─────────────────────────────────┘    │
-│                                         │
-│            [Parse with AI]              │
-└─────────────────────────────────────────┘
++--------------------------------------------------+
+|  ELYN CLAIMS BILLING REPORT                      |
+|  Generated: Jan 31, 2026 | Period: Jan 1-31      |
+|  Provider: Dr. Smith | NPI: 1234567890           |
++--------------------------------------------------+
+|                                                  |
+|  FACILITY: LiveMed General Hospital              |
++--------------------------------------------------+
+| Patient (LAST, FIRST) | DOB | MRN | Insurance    |
+| DOS | CPT | Mod | Dx | RVU | Status              |
++--------------------------------------------------+
+| SMITH, JOHN           | 01/15/1960 | 12345      |
+| Blue Cross | BC123456 | Grp: 999                 |
+| 01/28/26 | 99223 | 25 | I50.9 | 3.86 | Pending   |
++--------------------------------------------------+
+| Facility Subtotal: 5 bills | 12.50 RVU           |
++--------------------------------------------------+
+|                                                  |
+|  FACILITY: Memorial Regional                     |
+|  [same structure repeated]                       |
++--------------------------------------------------+
+|                                                  |
+|  GRAND TOTAL: 12 bills | 28.75 RVU | $1,150.00  |
++--------------------------------------------------+
 ```
 
----
+## Implementation Steps
 
-## Part 2: Update Edge Function for Vision
+### Step 1: Extend Billing Data to Include Patient Insurance Info
 
-**File: `supabase/functions/parse-face-sheet/index.ts`**
+The `useBilling` hook currently fetches patient name, MRN, and DOB. I'll extend the query to also retrieve:
+- `insurance_id`
+- `insurance_name`
+- `insurance_group`
+- `insurance_plan_type`
+- `subscriber_name`
+- `subscriber_relationship`
 
-### Changes:
-- Switch from Cohere to Lovable AI (Gemini) which supports vision
-- Accept `imageBase64` parameter
-- Use Gemini's multimodal capabilities to read the image
-- Extract text from the image and parse patient information
+This requires updating the `UnifiedBill` interface and the data fetching logic in `useBilling.ts`.
 
-### New Flow:
-```text
-Image (base64) → Gemini Vision API → Extracted Text → Structured JSON
-```
+### Step 2: Create ClaimsReadyPrintReport Component
 
-### Technical Implementation:
-- Use `google/gemini-2.5-flash` model via Lovable AI gateway
-- Send image as `image_url` with base64 data
-- Prompt asks AI to read the face sheet and extract all fields
-- Returns same structured JSON format as text parsing
+A new component at `src/components/billing/ClaimsReadyPrintReport.tsx` that:
 
----
+1. **Groups bills by facility** - Uses `_.groupBy` or similar logic to organize data
+2. **Applies claims formatting** - Uses existing `formatClaimsName()` and `formatClaimsDOB()` utilities
+3. **Shows insurance details** - Displays payer, member ID, group number for each patient
+4. **Includes provider header** - Shows rendering provider name and NPI from profiles table
+5. **Calculates subtotals** - Per-facility RVU/bill counts and grand totals
+6. **Print-optimized CSS** - Uses `@media print` rules for clean output
 
-## Part 3: Camera Capture Implementation
+### Step 3: Add Claims Validation Indicator
 
-### Mobile Camera Access:
-```typescript
-// Request camera access
-const stream = await navigator.mediaDevices.getUserMedia({
-  video: { facingMode: 'environment' } // Back camera
-});
+Each row will show a small validation indicator:
+- Green checkmark: All required claims fields present
+- Yellow warning: Missing optional but recommended fields
+- Red alert: Missing required fields (DOB, MRN, Insurance ID)
 
-// Capture frame to canvas
-const canvas = document.createElement('canvas');
-canvas.getContext('2d').drawImage(video, 0, 0);
-const imageBase64 = canvas.toDataURL('image/jpeg', 0.8);
-```
+### Step 4: Update Export Modal with Claims Report Option
 
-### File Upload (Desktop/Mobile):
-```typescript
-<input 
-  type="file" 
-  accept="image/*" 
-  capture="environment"  // Opens camera on mobile
-  onChange={handleFileSelect}
-/>
-```
+Add a "Print Claims Report" button to `RecordsExportModal.tsx` that:
+- Opens the new ClaimsReadyPrintReport in a print-friendly view
+- Allows filtering by facility before printing
+- Respects existing date range and status filters
 
----
+### Step 5: Add Print Styles
 
-## Files to Modify
-
-1. **`src/components/facesheet/FaceSheetParser.tsx`**
-   - Add tab interface for Text vs Photo input
-   - Add camera capture functionality
-   - Add file upload functionality
-   - Add image preview component
-   - Update parse function to send image when applicable
-
-2. **`supabase/functions/parse-face-sheet/index.ts`**
-   - Switch from Cohere API to Lovable AI (Gemini with vision)
-   - Handle `imageBase64` input
-   - Use multimodal prompt for image parsing
+Create print-specific CSS in the component that:
+- Removes screen-only UI elements
+- Ensures proper page breaks between facilities
+- Uses black/white color scheme for clean printing
+- Sets appropriate margins and font sizes
 
 ---
 
 ## Technical Details
 
-### Updated Edge Function Structure:
+### File Changes
+
+| File | Change |
+|------|--------|
+| `src/hooks/useBilling.ts` | Add insurance fields to UnifiedBill interface and fetch query |
+| `src/components/billing/ClaimsReadyPrintReport.tsx` | **NEW** - Main claims report component |
+| `src/components/billing/RecordsExportModal.tsx` | Add "Print Claims Report" button |
+| `src/components/billing/BillsExportModal.tsx` | Add "Print Claims Report" button for manual bills |
+| `src/lib/claimsFormatting.ts` | Add helper for formatting insurance display |
+
+### UnifiedBill Interface Updates
+
+New fields to add:
+```typescript
+// Insurance info (from patients table)
+insurance_id: string | null;
+insurance_name: string | null;
+insurance_group: string | null;
+insurance_plan_type: string | null;
+subscriber_name: string | null;
+subscriber_relationship: string | null;
+```
+
+### Claims Report Props
 
 ```typescript
-// Use Lovable AI instead of Cohere for vision support
-const LOVABLE_AI_URL = 'https://ai.gateway.lovable.dev/v1/chat/completions';
-
-const { text, imageBase64 } = await req.json();
-
-let content: any[];
-if (imageBase64) {
-  // Vision mode - send image
-  content = [
-    { type: 'text', text: 'Parse this face sheet image...' },
-    { type: 'image_url', image_url: { url: imageBase64 }}
-  ];
-} else {
-  // Text mode - send text
-  content = [{ type: 'text', text: `Parse this face sheet:\n\n${text}` }];
+interface ClaimsReadyPrintReportProps {
+  bills: UnifiedBill[];
+  startDate?: Date;
+  endDate?: Date;
+  providerName: string;
+  providerNPI?: string;
+  onClose: () => void;
 }
-
-const response = await fetch(LOVABLE_AI_URL, {
-  headers: { Authorization: `Bearer ${LOVABLE_API_KEY}` },
-  body: JSON.stringify({
-    model: 'google/gemini-2.5-flash',
-    messages: [{ role: 'user', content }]
-  })
-});
 ```
 
-### Camera Component Flow:
+### Facility Grouping Logic
 
-1. User taps "Take Photo" button
-2. Camera view opens in modal/sheet
-3. User frames the face sheet and taps capture
-4. Image preview shown with "Retake" or "Use Photo" options
-5. On confirm, image sent to edge function
-6. AI extracts data and populates fields
-
----
-
-## User Workflow After Implementation
-
-### Mobile (at bedside):
-1. Open ELYN → Face Sheet Parser
-2. Tap "Capture Photo" tab
-3. Tap "Take Photo" → Camera opens
-4. Point at printed face sheet → Capture
-5. Review image → Confirm
-6. AI reads document and extracts all data
-7. Review/edit → Save patient
-
-### Desktop (with scanned document):
-1. Open Face Sheet Parser
-2. Tap "Capture Photo" tab
-3. Click "Upload File"
-4. Select scanned face sheet image
-5. AI processes and extracts data
-6. Review/edit → Save patient
-
----
-
-## Alternative: Simple File Input (Faster to Implement)
-
-If full camera capture is too complex, a simpler approach uses HTML file input with `capture` attribute:
-
-```html
-<input type="file" accept="image/*" capture="environment" />
+Bills will be grouped using:
+```typescript
+const billsByFacility = bills.reduce((acc, bill) => {
+  const facility = bill.facility || 'Unassigned';
+  if (!acc[facility]) acc[facility] = [];
+  acc[facility].push(bill);
+  return acc;
+}, {} as Record<string, UnifiedBill[]>);
 ```
 
-This automatically opens the camera on mobile devices and file picker on desktop. Same end result with less code.
+## Benefits for Multi-Hospital Workflow
 
----
-
-## Considerations
-
-- **Image Size**: Compress images before sending (max ~4MB for base64)
-- **Lighting**: Add tip for users to ensure good lighting
-- **Orientation**: Handle portrait/landscape automatically
-- **Privacy**: Images processed by AI but not stored permanently
+1. **One report, all hospitals** - View all facilities or filter to specific ones
+2. **Print per facility** - Use facility filter to generate hospital-specific reports
+3. **Claims-ready format** - All data formatted per CMS 1500/UB-04 standards
+4. **Quick validation** - See at a glance which patients have complete data
+5. **Professional output** - Clean layout suitable for submission documentation
 
