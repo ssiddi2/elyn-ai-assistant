@@ -1,153 +1,247 @@
 
-# Claims-Ready Print Report for Multi-Hospital Billing Submission
+# Customizable Note Templates and Raw Transcription Mode
 
 ## Overview
 
-This plan creates a new **ClaimsReadyPrintReport** component that transforms billing data into a print-optimized, claims-compliant format. It supports physicians rounding at multiple hospitals by grouping bills by facility, with all required insurance and patient data properly formatted.
+Based on physician feedback, this plan adds two major capabilities to ELYN:
 
-## What You'll Get
+1. **"Raw Transcription" Mode** - A simple dictation mode that outputs verbatim transcript without AI structuring, so physicians can directly copy/paste into individual EHR fields
+2. **Note Template Customization** - Ability to customize which sections appear in generated notes and in what order
 
-### Print Report Features
-- **Claims-formatted patient names** - "LASTNAME, FIRSTNAME" uppercase format (no special characters)
-- **Complete patient identifiers** - DOB (MM/DD/YYYY), MRN, Insurance Member ID
-- **Full insurance details** - Payer name, Group number, Plan type, Subscriber info
-- **Facility grouping** - Bills organized by hospital with subtotals per facility
-- **Provider information** - Rendering provider name and NPI number
-- **Professional layout** - Clean, print-optimized design with ELYN branding
+## The Problem Being Solved
 
-### Report Structure
+Many EHRs require physicians to enter note sections into separate fields (History, Exam, Assessment, Plan). When ELYN generates a fully-formed SOAP note, the physician must manually cut and paste each section into the correct EHR field. In these cases, having the raw transcript is faster and easier.
+
+Additionally, different physicians have different documentation preferences - some may want a full SOAP note, others may prefer a streamlined format without certain sections.
+
+---
+
+## Feature 1: Raw Transcription Mode
+
+### What You'll Get
+
+A new "Raw" option alongside Quick/Ambient recording modes that:
+- Transcribes speech without any AI processing
+- Applies only medical term correction (metaprole to metoprolol, etc.)
+- Outputs clean, verbatim text ready to paste into any EHR field
+- Skips note generation and billing extraction entirely
+- Shows a "Copy" button prominently for easy clipboard access
+
+### User Flow
 
 ```text
-+--------------------------------------------------+
-|  ELYN CLAIMS BILLING REPORT                      |
-|  Generated: Jan 31, 2026 | Period: Jan 1-31      |
-|  Provider: Dr. Smith | NPI: 1234567890           |
-+--------------------------------------------------+
-|                                                  |
-|  FACILITY: LiveMed General Hospital              |
-+--------------------------------------------------+
-| Patient (LAST, FIRST) | DOB | MRN | Insurance    |
-| DOS | CPT | Mod | Dx | RVU | Status              |
-+--------------------------------------------------+
-| SMITH, JOHN           | 01/15/1960 | 12345      |
-| Blue Cross | BC123456 | Grp: 999                 |
-| 01/28/26 | 99223 | 25 | I50.9 | 3.86 | Pending   |
-+--------------------------------------------------+
-| Facility Subtotal: 5 bills | 12.50 RVU           |
-+--------------------------------------------------+
-|                                                  |
-|  FACILITY: Memorial Regional                     |
-|  [same structure repeated]                       |
-+--------------------------------------------------+
-|                                                  |
-|  GRAND TOTAL: 12 bills | 28.75 RVU | $1,150.00  |
-+--------------------------------------------------+
+Recording Sheet
++------------------------------------------+
+|  [Clinical]  [Radiology]                 |
++------------------------------------------+
+|  Recording Mode:                         |
+|  [Quick] [Ambient] [Raw]   <-- NEW       |
+|                                          |
+|  "Plain dictation without AI formatting" |
++------------------------------------------+
+|  [Transcript Area]                       |
+|                                          |
+|  Patient is a 65-year-old male with      |
+|  chest pain radiating to left arm...     |
+|                                          |
++------------------------------------------+
+|  [Record]  [Copy to Clipboard]           |
+|                    ^ (replaces Generate) |
++------------------------------------------+
 ```
 
-## Implementation Steps
+### Implementation
 
-### Step 1: Extend Billing Data to Include Patient Insurance Info
+1. **Update RecordingSheet.tsx**
+   - Add `'raw'` to `RecordingMode` type: `type RecordingMode = 'quick' | 'ambient' | 'raw'`
+   - Add a third button in the Recording Mode toggle
+   - When in raw mode, change "Generate" button to "Copy to Clipboard"
+   - Skip the `onGenerate` callback entirely when raw mode is active
+   - Apply medical term correction but skip AI processing
 
-The `useBilling` hook currently fetches patient name, MRN, and DOB. I'll extend the query to also retrieve:
-- `insurance_id`
-- `insurance_name`
-- `insurance_group`
-- `insurance_plan_type`
-- `subscriber_name`
-- `subscriber_relationship`
+2. **Files to modify:**
+   - `src/components/recording/RecordingSheet.tsx`
 
-This requires updating the `UnifiedBill` interface and the data fetching logic in `useBilling.ts`.
+---
 
-### Step 2: Create ClaimsReadyPrintReport Component
+## Feature 2: Note Template Customization
 
-A new component at `src/components/billing/ClaimsReadyPrintReport.tsx` that:
+### What You'll Get
 
-1. **Groups bills by facility** - Uses `_.groupBy` or similar logic to organize data
-2. **Applies claims formatting** - Uses existing `formatClaimsName()` and `formatClaimsDOB()` utilities
-3. **Shows insurance details** - Displays payer, member ID, group number for each patient
-4. **Includes provider header** - Shows rendering provider name and NPI from profiles table
-5. **Calculates subtotals** - Per-facility RVU/bill counts and grand totals
-6. **Print-optimized CSS** - Uses `@media print` rules for clean output
+A new "Note Preferences" section in Profile Settings where physicians can:
+- Choose a default note format (SOAP, APSO, or custom)
+- Toggle specific sections on/off (Subjective, Objective, Assessment, Plan, etc.)
+- Reorder sections via drag-and-drop or up/down buttons
+- Save preferences that persist across sessions
 
-### Step 3: Add Claims Validation Indicator
+### Available Templates
 
-Each row will show a small validation indicator:
-- Green checkmark: All required claims fields present
-- Yellow warning: Missing optional but recommended fields
-- Red alert: Missing required fields (DOB, MRN, Insurance ID)
+| Template | Section Order | Use Case |
+|----------|---------------|----------|
+| SOAP (default) | Subjective, Objective, Assessment, Plan | Standard documentation |
+| APSO | Assessment, Plan, Subjective, Objective | Problem-focused notes |
+| Brief | Assessment, Plan only | Quick follow-ups |
+| Custom | User-defined | EHR-specific workflows |
 
-### Step 4: Update Export Modal with Claims Report Option
+### User Flow
 
-Add a "Print Claims Report" button to `RecordsExportModal.tsx` that:
-- Opens the new ClaimsReadyPrintReport in a print-friendly view
-- Allows filtering by facility before printing
-- Respects existing date range and status filters
+```text
+Profile Settings
++------------------------------------------+
+|  Note Preferences                        |
++------------------------------------------+
+|  Default Format: [SOAP ▼]                |
+|                                          |
+|  Sections to Include:                    |
+|  ☑ Subjective (HPI, ROS, PMH, Meds)     |
+|  ☑ Objective (Vitals, Exam, Labs)       |
+|  ☑ Assessment                           |
+|  ☑ Plan                                 |
+|  ☐ Patient Education   <-- optional     |
+|  ☐ Follow-up                            |
+|                                          |
+|  [Save Preferences]                      |
++------------------------------------------+
+```
 
-### Step 5: Add Print Styles
+### Implementation
 
-Create print-specific CSS in the component that:
-- Removes screen-only UI elements
-- Ensures proper page breaks between facilities
-- Uses black/white color scheme for clean printing
-- Sets appropriate margins and font sizes
+1. **Database: Use existing `preferences` JSONB column in `profiles` table**
+   - No migration needed - the column already exists
+   - Store preferences as: `{ noteFormat: 'soap', sections: { subjective: true, ... }, sectionOrder: [...] }`
+
+2. **Create preferences hook: `src/hooks/useNotePreferences.ts`**
+   - Fetch and cache preferences from profiles table
+   - Provide update function to save changes
+   - Export default preferences for new users
+
+3. **Update ProfileSettings.tsx**
+   - Add "Note Preferences" card below "Appearance"
+   - Template dropdown (SOAP, APSO, Brief, Custom)
+   - Section checkboxes with labels
+   - Save button that persists to profiles.preferences
+
+4. **Update edge function: `supabase/functions/generate-note-with-billing/index.ts`**
+   - Accept `notePreferences` parameter
+   - Dynamically build SOAP structure based on enabled sections
+   - Respect section order in output
+
+5. **Update AI service: `src/services/ai.ts`**
+   - Pass note preferences to edge function
+
+6. **Files to modify:**
+   - `src/hooks/useNotePreferences.ts` (new file)
+   - `src/pages/ProfileSettings.tsx`
+   - `src/services/ai.ts`
+   - `src/components/layout/CommandCenter.tsx`
+   - `supabase/functions/generate-note-with-billing/index.ts`
 
 ---
 
 ## Technical Details
 
-### File Changes
+### Raw Mode Recording Changes
 
-| File | Change |
-|------|--------|
-| `src/hooks/useBilling.ts` | Add insurance fields to UnifiedBill interface and fetch query |
-| `src/components/billing/ClaimsReadyPrintReport.tsx` | **NEW** - Main claims report component |
-| `src/components/billing/RecordsExportModal.tsx` | Add "Print Claims Report" button |
-| `src/components/billing/BillsExportModal.tsx` | Add "Print Claims Report" button for manual bills |
-| `src/lib/claimsFormatting.ts` | Add helper for formatting insurance display |
-
-### UnifiedBill Interface Updates
-
-New fields to add:
 ```typescript
-// Insurance info (from patients table)
-insurance_id: string | null;
-insurance_name: string | null;
-insurance_group: string | null;
-insurance_plan_type: string | null;
-subscriber_name: string | null;
-subscriber_relationship: string | null;
+// RecordingSheet.tsx - Recording Mode type update
+type RecordingMode = 'quick' | 'ambient' | 'raw';
+
+// New button in Recording Mode toggle
+<button
+  onClick={() => setRecordingMode('raw')}
+  className={cn(...)}
+>
+  <FileText className="w-4 h-4" />
+  Raw
+</button>
+
+// Conditional action button
+{recordingMode === 'raw' ? (
+  <Button onClick={handleCopyToClipboard}>
+    <Copy className="w-5 h-5 mr-2" />
+    Copy to Clipboard
+  </Button>
+) : (
+  <Button onClick={onGenerate}>
+    <Sparkles className="w-5 h-5 mr-2" />
+    Generate
+  </Button>
+)}
 ```
 
-### Claims Report Props
+### Note Preferences Interface
 
 ```typescript
-interface ClaimsReadyPrintReportProps {
-  bills: UnifiedBill[];
-  startDate?: Date;
-  endDate?: Date;
-  providerName: string;
-  providerNPI?: string;
-  onClose: () => void;
+// src/hooks/useNotePreferences.ts
+interface NotePreferences {
+  noteFormat: 'soap' | 'apso' | 'brief' | 'custom';
+  sections: {
+    subjective: boolean;  // HPI, ROS, PMH, Medications, Allergies
+    objective: boolean;   // Vitals, Physical Exam, Labs
+    assessment: boolean;  // Diagnosis, Problem List
+    plan: boolean;        // Treatment, Follow-up
+    patientEducation: boolean;
+    followUp: boolean;
+  };
+  sectionOrder: string[];  // ['subjective', 'objective', 'assessment', 'plan']
+}
+
+const DEFAULT_PREFERENCES: NotePreferences = {
+  noteFormat: 'soap',
+  sections: {
+    subjective: true,
+    objective: true,
+    assessment: true,
+    plan: true,
+    patientEducation: false,
+    followUp: false,
+  },
+  sectionOrder: ['subjective', 'objective', 'assessment', 'plan'],
+};
+```
+
+### Edge Function Update
+
+The edge function will receive preferences and build the prompt dynamically:
+
+```typescript
+// In generate-note-with-billing/index.ts
+const notePreferences = body.notePreferences || null;
+
+// Build SOAP structure dynamically based on preferences
+function buildSOAPPrompt(prefs: NotePreferences | null): string {
+  if (!prefs) return SOAP_STRUCTURE; // Default full SOAP
+  
+  const sections = [];
+  for (const sectionKey of prefs.sectionOrder) {
+    if (prefs.sections[sectionKey]) {
+      sections.push(SECTION_TEMPLATES[sectionKey]);
+    }
+  }
+  return sections.join('\n\n');
 }
 ```
 
-### Facility Grouping Logic
+---
 
-Bills will be grouped using:
-```typescript
-const billsByFacility = bills.reduce((acc, bill) => {
-  const facility = bill.facility || 'Unassigned';
-  if (!acc[facility]) acc[facility] = [];
-  acc[facility].push(bill);
-  return acc;
-}, {} as Record<string, UnifiedBill[]>);
-```
+## Implementation Order
 
-## Benefits for Multi-Hospital Workflow
+1. **Phase 1: Raw Transcription Mode** (simpler, immediate value)
+   - Update RecordingSheet with raw mode option
+   - Add copy-to-clipboard functionality
+   - Skip generate flow for raw mode
 
-1. **One report, all hospitals** - View all facilities or filter to specific ones
-2. **Print per facility** - Use facility filter to generate hospital-specific reports
-3. **Claims-ready format** - All data formatted per CMS 1500/UB-04 standards
-4. **Quick validation** - See at a glance which patients have complete data
-5. **Professional output** - Clean layout suitable for submission documentation
+2. **Phase 2: Note Preferences** (more complex, stored per-user)
+   - Create useNotePreferences hook
+   - Add UI to ProfileSettings
+   - Update edge function to accept preferences
+   - Wire preferences through CommandCenter to AI service
 
+---
+
+## Benefits
+
+1. **Raw Mode**: Physicians can quickly dictate and paste directly into EHR fields without reformatting
+2. **Template Customization**: Notes match physician's preferred documentation style
+3. **EHR Compatibility**: Easier to work with EHRs that have rigid section requirements
+4. **Time Savings**: Less copy-paste manipulation after note generation
