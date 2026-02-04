@@ -57,37 +57,87 @@ const CLINICAL_TEMPLATES: Record<string, string> = {
   progress: `Progress Note in SOAP Format`,
 };
 
-// SOAP section guidance
-const SOAP_STRUCTURE = `
-Generate the note in SOAP format with these exact section headers:
-
-## SUBJECTIVE
+// Section templates for dynamic building
+const SECTION_TEMPLATES: Record<string, string> = {
+  subjective: `## SUBJECTIVE
 - Chief Complaint (CC)
 - History of Present Illness (HPI)
 - Review of Systems (ROS)
 - Past Medical History (PMH)
 - Medications
 - Allergies
-- Social/Family History (if relevant)
-
-## OBJECTIVE
+- Social/Family History (if relevant)`,
+  objective: `## OBJECTIVE
 - Vital Signs
 - Physical Examination findings
-- Laboratory/Imaging results (if available)
-
-## ASSESSMENT
+- Laboratory/Imaging results (if available)`,
+  assessment: `## ASSESSMENT
 - Primary diagnosis with ICD-10 codes
 - Differential diagnoses
-- Problem list
-
-## PLAN
+- Problem list`,
+  plan: `## PLAN
 - Treatment plan
 - Medications (with dosage)
 - Follow-up instructions
 - Patient education
-- Referrals (if any)
+- Referrals (if any)`,
+  patientEducation: `## PATIENT EDUCATION
+- Instructions given to patient
+- Warning signs to watch for
+- Lifestyle modifications`,
+  followUp: `## FOLLOW-UP
+- Next appointment
+- When to return for evaluation
+- Pending tests/results`,
+};
+
+// Default SOAP section order
+const DEFAULT_SECTION_ORDER = ['subjective', 'objective', 'assessment', 'plan'];
+
+// Build SOAP structure dynamically based on preferences
+interface NotePreferencesInput {
+  noteFormat?: string;
+  sections?: Record<string, boolean>;
+  sectionOrder?: string[];
+}
+
+function buildDynamicSOAPStructure(prefs: NotePreferencesInput | null): string {
+  // If no preferences or all sections enabled, return full SOAP
+  if (!prefs || !prefs.sections || !prefs.sectionOrder) {
+    return `
+Generate the note in SOAP format with these exact section headers:
+
+${SECTION_TEMPLATES.subjective}
+
+${SECTION_TEMPLATES.objective}
+
+${SECTION_TEMPLATES.assessment}
+
+${SECTION_TEMPLATES.plan}
 
 Use "##" for section headers exactly as shown above.`;
+  }
+
+  // Build sections in the specified order, only including enabled ones
+  const enabledSections: string[] = [];
+  for (const sectionKey of prefs.sectionOrder) {
+    if (prefs.sections[sectionKey] && SECTION_TEMPLATES[sectionKey]) {
+      enabledSections.push(SECTION_TEMPLATES[sectionKey]);
+    }
+  }
+
+  if (enabledSections.length === 0) {
+    // Fallback to assessment + plan if nothing selected
+    enabledSections.push(SECTION_TEMPLATES.assessment, SECTION_TEMPLATES.plan);
+  }
+
+  return `
+Generate the note with these exact section headers (in this order):
+
+${enabledSections.join('\n\n')}
+
+Use "##" for section headers exactly as shown above.`;
+}
 
 // Radiology report templates
 const RADIOLOGY_TEMPLATES: Record<string, string> = {
@@ -125,6 +175,7 @@ serve(async (req) => {
     const noteType = body.noteType || 'progress';
     const patientInfo = body.patientInfo || {};
     const radiologyContext = body.radiologyContext || null;
+    const notePreferences: NotePreferencesInput | null = body.notePreferences || null;
 
     if (!transcript || transcript.length < 20) {
       return new Response(JSON.stringify({ 
@@ -183,6 +234,9 @@ serve(async (req) => {
       : CLINICAL_TEMPLATES[noteType] || CLINICAL_TEMPLATES.progress;
 
     const cptGuidance = isRadiology ? `\n\nCPT Code Guidance: ${RADIOLOGY_CPT_GUIDANCE[noteType] || ''}` : '';
+    
+    // Build dynamic SOAP structure based on preferences (clinical only)
+    const soapStructure = isRadiology ? '' : buildDynamicSOAPStructure(notePreferences);
 
     const systemPrompt = isRadiology
       ? `You are an expert radiologist generating a structured radiology report AND extracting billing codes from the dictation.
@@ -207,19 +261,19 @@ OUTPUT FORMAT (respond with valid JSON only):
   },
   "structured_category": "BI-RADS 2" // if applicable
 }`
-      : `You are an expert medical documentation specialist. Generate a clinical note in SOAP format AND extract billing codes from the transcript.
+      : `You are an expert medical documentation specialist. Generate a clinical note AND extract billing codes from the transcript.
 
 CRITICAL RULES:
 1. Preserve all placeholder tokens exactly as written (e.g., [PATIENT_NAME], [PATIENT_MRN])
 2. Use standard medical terminology and proper documentation format
 3. Extract accurate ICD-10 and CPT codes based on documented conditions/procedures
 4. Determine MDM complexity and E/M level based on documentation
-5. ALWAYS use SOAP format with section headers
-${SOAP_STRUCTURE}
+5. Follow the section structure provided below
+${soapStructure}
 
 OUTPUT FORMAT (respond with valid JSON only):
 {
-  "note": "## SUBJECTIVE\\n...\\n\\n## OBJECTIVE\\n...\\n\\n## ASSESSMENT\\n...\\n\\n## PLAN\\n...",
+  "note": "## SECTION_NAME\\n...\\n\\n## NEXT_SECTION\\n...",
   "billing": {
     "icd10": [{"code": "X00.0", "description": "Condition"}],
     "cpt": [{"code": "99214", "description": "Office visit"}],

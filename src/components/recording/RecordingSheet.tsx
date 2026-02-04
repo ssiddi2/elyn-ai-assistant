@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Mic, MicOff, Sparkles, Copy, Check, ChevronUp, ChevronDown, Radio, Zap, Stethoscope, Scan, User, AlertCircle } from 'lucide-react';
+import { X, Mic, MicOff, Sparkles, Copy, Check, ChevronUp, ChevronDown, Radio, Zap, Stethoscope, Scan, User, AlertCircle, FileText } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Waveform } from '@/components/elyn/index';
 import { cn } from '@/lib/utils';
@@ -42,7 +42,7 @@ const noteTypes = [
   { id: 'Progress', label: 'Progress', icon: '📋' },
 ];
 
-type RecordingMode = 'quick' | 'ambient';
+type RecordingMode = 'quick' | 'ambient' | 'raw';
 
 export default function RecordingSheet({
   isOpen,
@@ -74,6 +74,7 @@ export default function RecordingSheet({
   const [isCorrecting, setIsCorrecting] = useState(false);
   const [showPatientSelector, setShowPatientSelector] = useState(false);
   const [patientSearch, setPatientSearch] = useState('');
+  const [rawCopied, setRawCopied] = useState(false);
   
   const realtime = useRealtimeTranscription();
   const [ambientDuration, setAmbientDuration] = useState(0);
@@ -89,6 +90,14 @@ export default function RecordingSheet({
     await navigator.clipboard.writeText(transcript);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Copy to clipboard for raw mode
+  const handleRawCopyToClipboard = async () => {
+    if (!transcript.trim()) return;
+    await navigator.clipboard.writeText(transcript);
+    setRawCopied(true);
+    setTimeout(() => setRawCopied(false), 2500);
   };
 
   // Helper function to correct medical terms
@@ -411,11 +420,11 @@ export default function RecordingSheet({
 
                     {/* Recording Mode Toggle */}
                     <div className="px-4 pt-2 pb-2">
-                      <div className="flex gap-2 p-1 bg-muted/50 rounded-xl">
+                      <div className="flex gap-1 p-1 bg-muted/50 rounded-xl">
                         <button
                           onClick={() => setRecordingMode('quick')}
                           className={cn(
-                            'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all',
+                            'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all',
                             recordingMode === 'quick'
                               ? 'bg-card text-foreground shadow-sm'
                               : 'text-muted-foreground hover:text-foreground'
@@ -427,7 +436,7 @@ export default function RecordingSheet({
                         <button
                           onClick={() => setRecordingMode('ambient')}
                           className={cn(
-                            'flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all',
+                            'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all',
                             recordingMode === 'ambient'
                               ? 'bg-card text-foreground shadow-sm'
                               : 'text-muted-foreground hover:text-foreground'
@@ -436,11 +445,25 @@ export default function RecordingSheet({
                           <Radio className="w-4 h-4" />
                           Ambient
                         </button>
+                        <button
+                          onClick={() => setRecordingMode('raw')}
+                          className={cn(
+                            'flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-all',
+                            recordingMode === 'raw'
+                              ? 'bg-card text-foreground shadow-sm'
+                              : 'text-muted-foreground hover:text-foreground'
+                          )}
+                        >
+                          <FileText className="w-4 h-4" />
+                          Raw
+                        </button>
                       </div>
                       <p className="text-xs text-muted-foreground text-center mt-2">
                         {recordingMode === 'quick' 
                           ? 'Short dictations with live transcription'
-                          : 'Long recordings for full patient encounters'}
+                          : recordingMode === 'ambient'
+                            ? 'Long recordings for full patient encounters'
+                            : 'Plain dictation without AI formatting'}
                       </p>
                     </div>
 
@@ -703,23 +726,49 @@ export default function RecordingSheet({
                 )}
               </Button>
               
-              <Button
-                onClick={onGenerate}
-                disabled={isGenerating || !transcript.trim() || isCorrecting}
-                className="flex-1 h-12 rounded-xl font-semibold bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"
-              >
-                {isGenerating ? (
-                  <>
-                    <span className="animate-spin mr-2">⏳</span>
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-5 h-5 mr-2" />
-                    {documentMode === 'radiology' ? `Generate ${getModalityLabel(radiologyModality)} Report` : 'Generate'}
-                  </>
-                )}
-              </Button>
+              {/* Raw mode: Copy to Clipboard button, otherwise Generate button */}
+              {recordingMode === 'raw' ? (
+                <Button
+                  onClick={handleRawCopyToClipboard}
+                  disabled={!transcript.trim() || isCorrecting}
+                  className={cn(
+                    'flex-1 h-12 rounded-xl font-semibold transition-all',
+                    rawCopied
+                      ? 'bg-emerald-600 hover:bg-emerald-600 text-white'
+                      : 'bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50'
+                  )}
+                >
+                  {rawCopied ? (
+                    <>
+                      <Check className="w-5 h-5 mr-2" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-5 h-5 mr-2" />
+                      Copy to Clipboard
+                    </>
+                  )}
+                </Button>
+              ) : (
+                <Button
+                  onClick={onGenerate}
+                  disabled={isGenerating || !transcript.trim() || isCorrecting}
+                  className="flex-1 h-12 rounded-xl font-semibold bg-primary hover:bg-primary/90 text-primary-foreground disabled:opacity-50"
+                >
+                  {isGenerating ? (
+                    <>
+                      <span className="animate-spin mr-2">⏳</span>
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-5 h-5 mr-2" />
+                      {documentMode === 'radiology' ? `Generate ${getModalityLabel(radiologyModality)} Report` : 'Generate'}
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
             </motion.div>
           </div>
