@@ -5,11 +5,17 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useSessionSecurity } from '@/hooks/useSessionSecurity';
 import { useToast } from '@/hooks/use-toast';
+import useNotePreferences, { 
+  NotePreferences, 
+  SECTION_LABELS, 
+  NOTE_TEMPLATES 
+} from '@/hooks/useNotePreferences';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Select,
   SelectContent,
@@ -28,7 +34,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { ArrowLeft, User, Save, Loader2, Heart, Brain, Stethoscope, AlertTriangle, Building2, Bone, Baby, Microscope, Shield, LogOut, Monitor, Sun, Moon, Laptop } from 'lucide-react';
+import { ArrowLeft, User, Save, Loader2, Heart, Brain, Stethoscope, AlertTriangle, Building2, Bone, Baby, Microscope, Shield, LogOut, Monitor, Sun, Moon, Laptop, FileText, ChevronUp, ChevronDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 
@@ -64,6 +70,17 @@ const ProfileSettings = () => {
   const { theme, setTheme } = useTheme();
   const navigate = useNavigate();
   const { toast } = useToast();
+  
+  // Note preferences hook
+  const { 
+    preferences: notePreferences, 
+    loading: notePrefsLoading, 
+    saving: notePrefsaving, 
+    savePreferences: saveNotePreferences,
+    applyTemplate,
+    toggleSection,
+    setPreferences: setNotePreferences,
+  } = useNotePreferences();
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -163,6 +180,45 @@ const ProfileSettings = () => {
         description: 'Failed to sign out other devices.',
         variant: 'destructive',
       });
+    }
+  };
+
+  // Handle saving note preferences
+  const handleSaveNotePreferences = async () => {
+    const success = await saveNotePreferences(notePreferences);
+    if (success) {
+      toast({
+        title: 'Note preferences saved',
+        description: 'Your note template preferences have been updated.',
+      });
+    } else {
+      toast({
+        title: 'Error saving preferences',
+        description: 'Failed to save note preferences.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  // Move section up in order
+  const moveSectionUp = (sectionKey: string) => {
+    const currentOrder = notePreferences.sectionOrder;
+    const idx = currentOrder.indexOf(sectionKey);
+    if (idx > 0) {
+      const newOrder = [...currentOrder];
+      [newOrder[idx - 1], newOrder[idx]] = [newOrder[idx], newOrder[idx - 1]];
+      setNotePreferences({ ...notePreferences, sectionOrder: newOrder, noteFormat: 'custom' });
+    }
+  };
+
+  // Move section down in order
+  const moveSectionDown = (sectionKey: string) => {
+    const currentOrder = notePreferences.sectionOrder;
+    const idx = currentOrder.indexOf(sectionKey);
+    if (idx < currentOrder.length - 1) {
+      const newOrder = [...currentOrder];
+      [newOrder[idx], newOrder[idx + 1]] = [newOrder[idx + 1], newOrder[idx]];
+      setNotePreferences({ ...notePreferences, sectionOrder: newOrder, noteFormat: 'custom' });
     }
   };
 
@@ -351,6 +407,185 @@ const ProfileSettings = () => {
                 Choose between light, dark, or system-based theme
               </p>
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Note Preferences Card */}
+        <Card className="bg-card/50 backdrop-blur-sm border-border mt-6">
+          <CardHeader>
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-xl bg-primary/10">
+                <FileText className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <CardTitle>Note Preferences</CardTitle>
+                <CardDescription>Customize which sections appear in generated notes</CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {notePrefsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : (
+              <>
+                {/* Template Selection */}
+                <div className="space-y-2">
+                  <Label>Default Format</Label>
+                  <Select
+                    value={notePreferences.noteFormat}
+                    onValueChange={(value) => applyTemplate(value as NotePreferences['noteFormat'])}
+                  >
+                    <SelectTrigger className="bg-background/50">
+                      <SelectValue placeholder="Select a template" />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border-border">
+                      <SelectItem value="soap">
+                        <div className="flex flex-col">
+                          <span>SOAP (Standard)</span>
+                          <span className="text-xs text-muted-foreground">Subjective, Objective, Assessment, Plan</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="apso">
+                        <div className="flex flex-col">
+                          <span>APSO (Problem-Focused)</span>
+                          <span className="text-xs text-muted-foreground">Assessment, Plan, Subjective, Objective</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="brief">
+                        <div className="flex flex-col">
+                          <span>Brief</span>
+                          <span className="text-xs text-muted-foreground">Assessment and Plan only</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="custom">
+                        <div className="flex flex-col">
+                          <span>Custom</span>
+                          <span className="text-xs text-muted-foreground">Your custom configuration</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choose a template or customize sections below
+                  </p>
+                </div>
+
+                {/* Sections to Include */}
+                <div className="space-y-3">
+                  <Label>Sections to Include</Label>
+                  <div className="space-y-2">
+                    {Object.entries(SECTION_LABELS).map(([key, { label, description }]) => {
+                      const sectionKey = key as keyof NotePreferences['sections'];
+                      const isEnabled = notePreferences.sections[sectionKey];
+                      const orderIndex = notePreferences.sectionOrder.indexOf(key);
+                      const isInOrder = orderIndex !== -1;
+                      
+                      return (
+                        <div
+                          key={key}
+                          className={`flex items-center justify-between p-3 rounded-lg border transition-colors ${
+                            isEnabled ? 'bg-primary/5 border-primary/20' : 'bg-muted/30 border-border'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <Checkbox
+                              id={`section-${key}`}
+                              checked={isEnabled}
+                              onCheckedChange={() => {
+                                toggleSection(sectionKey);
+                                // Update order accordingly
+                                if (isEnabled) {
+                                  // Removing - take out of order
+                                  setNotePreferences({
+                                    ...notePreferences,
+                                    noteFormat: 'custom',
+                                    sections: {
+                                      ...notePreferences.sections,
+                                      [sectionKey]: false,
+                                    },
+                                    sectionOrder: notePreferences.sectionOrder.filter(s => s !== key),
+                                  });
+                                } else {
+                                  // Adding - add to end of order
+                                  setNotePreferences({
+                                    ...notePreferences,
+                                    noteFormat: 'custom',
+                                    sections: {
+                                      ...notePreferences.sections,
+                                      [sectionKey]: true,
+                                    },
+                                    sectionOrder: [...notePreferences.sectionOrder, key],
+                                  });
+                                }
+                              }}
+                            />
+                            <div>
+                              <label
+                                htmlFor={`section-${key}`}
+                                className="text-sm font-medium text-foreground cursor-pointer"
+                              >
+                                {label}
+                              </label>
+                              <p className="text-xs text-muted-foreground">{description}</p>
+                            </div>
+                          </div>
+                          
+                          {/* Reorder buttons - only show for enabled sections */}
+                          {isEnabled && isInOrder && (
+                            <div className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground mr-2">
+                                #{orderIndex + 1}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => moveSectionUp(key)}
+                                disabled={orderIndex === 0}
+                              >
+                                <ChevronUp className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                onClick={() => moveSectionDown(key)}
+                                disabled={orderIndex === notePreferences.sectionOrder.length - 1}
+                              >
+                                <ChevronDown className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="pt-4">
+                  <Button
+                    onClick={handleSaveNotePreferences}
+                    disabled={notePrefsaving}
+                    className="w-full"
+                  >
+                    {notePrefsaving ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-4 w-4" />
+                        Save Note Preferences
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 

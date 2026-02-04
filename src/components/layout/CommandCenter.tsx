@@ -5,6 +5,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useFacility } from '@/contexts/FacilityContext';
 import useSpeech from '@/hooks/useSpeech';
+import useNotePreferences from '@/hooks/useNotePreferences';
 import AI from '@/services/ai';
 import type { DocumentMode, RadiologyModality, RadiologyContext } from '@/types/medical';
 
@@ -102,6 +103,7 @@ export default function CommandCenter() {
   const { facilities, selectedFacilityId, selectedFacility } = useFacility();
   const speech = useSpeech();
   const { bills: unifiedBills, loading: billsLoading, updateBillStatus, refetch: refetchBills } = useBilling();
+  const { preferences: notePreferences } = useNotePreferences();
   
   // Tab state
   const [activeTab, setActiveTab] = useState('patients');
@@ -442,11 +444,13 @@ export default function CommandCenter() {
       const effectiveNoteType = documentMode === 'radiology' ? radiologyModality : noteType;
       
       // Use the consolidated API that generates note + billing together
+      // Pass note preferences for clinical notes (not radiology)
       const result = await AI.generateNoteWithBilling(
         editableTranscript, 
         effectiveNoteType, 
         patientCtx,
-        documentMode === 'radiology' ? radiologyContext : null
+        documentMode === 'radiology' ? radiologyContext : null,
+        documentMode === 'clinical' ? notePreferences : null
       );
       
       // Prepare billing data for confirmation

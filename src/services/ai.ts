@@ -1,5 +1,6 @@
 import { supabase } from '@/integrations/supabase/client';
 import type { PatientContext, PatientData, BillingCodes, ClinicalNote, RadiologyContext } from '@/types/medical';
+import type { NotePreferences } from '@/hooks/useNotePreferences';
 
 /**
  * AI service for generating clinical notes, radiology reports, billing codes, and handoffs.
@@ -14,7 +15,8 @@ const AI = {
     transcript: string,
     noteType: string,
     patientContext: PatientContext | null,
-    radiologyContext?: RadiologyContext | null
+    radiologyContext?: RadiologyContext | null,
+    notePreferences?: NotePreferences | null
   ): Promise<{ note: string; billing: BillingCodes; structured_category?: string | null }> {
     const noteTypeMap: Record<string, string> = {
       'H&P': 'hp',
@@ -35,6 +37,7 @@ const AI = {
         noteType: noteTypeMap[noteType] || noteType,
         patientInfo: patientContext,
         radiologyContext: radiologyContext || null,
+        notePreferences: notePreferences || null,
       },
     });
 
